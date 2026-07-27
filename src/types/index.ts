@@ -1,6 +1,8 @@
 export type Candidate = {
   id?: string
   role?: string
+  applied_job_id?: string
+  applied_job_title?: string
   name: string
   date?: string
   exp?: string
@@ -38,4 +40,14 @@ export type UploadRecord = {
   total_records?: number
   successful_records?: number
   failed_records?: number
+}
+
+export type Job = {
+  id?: string
+  title: string
+  openings?: number
+  location?: string
+  posted?: string
+  status?: 'Open' | 'Closed' | string
+  desc?: string
 }

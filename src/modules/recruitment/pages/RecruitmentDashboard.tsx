@@ -203,12 +203,13 @@ export default function RecruitmentDashboard() {
     setEditingId(null)
   }
 
-  function saveCurrent() {
+  function saveCurrent(updatedForm?: any) {
     ;(async () => {
       try {
+        const effectiveForm = updatedForm || form
         if (editingId) {
-          try { console.debug('Saving update', { editingId, form }) } catch (e) {}
-          const updated = await CandidateService.update(String(editingId), form)
+          try { console.debug('Saving update', { editingId, form: effectiveForm }) } catch (e) {}
+          const updated = await CandidateService.update(String(editingId), effectiveForm)
           if (!updated) {
             alert('Update did not affect any row. It may be a permissions issue or the record no longer exists. Reloading list.')
             const { data: fetched } = await CandidateService.list(1, 1000)
@@ -219,7 +220,7 @@ export default function RecruitmentDashboard() {
           setData((prev: any[]) => prev.map((d) => (String(d.id) === String(editingId) ? { ...d, ...updated } : d)))
           addToast('Candidate updated', 'success')
         } else {
-          const created = await CandidateService.create(form)
+          const created = await CandidateService.create(effectiveForm)
           setData((prev: any[]) => [created, ...prev])
           addToast('Candidate added', 'success')
         }

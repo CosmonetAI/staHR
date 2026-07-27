@@ -97,6 +97,8 @@ export const CandidateService = {
         intstatus: c.intstatus,
         selstatus: normalizeSelectionStatus(c.selstatus),
         remarks: c.remarks,
+        applied_job_id: c.applied_job_id,
+        applied_job_title: c.applied_job_title,
         f2f: c.f2f
       }))(candidate)
       const ret = await postEdge('/import_candidates', { upload: { file_name: 'single_create', total_records: 1 }, candidates: [payloadCandidate] }, 'POST')
@@ -126,6 +128,8 @@ export const CandidateService = {
         intstatus: c.intstatus,
         selstatus: normalizeSelectionStatus(c.selstatus),
         remarks: c.remarks,
+        applied_job_id: c.applied_job_id || c.job_id || null,
+        applied_job_title: c.applied_job_title || c.job_title || c.job_role || c.role || null,
         f2f: c.f2f
       }))
       const ret = await postEdge('/import_candidates', { upload: { file_name: 'bulk_import', total_records: payload.length }, candidates: payload }, 'POST')

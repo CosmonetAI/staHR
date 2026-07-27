@@ -1,5 +1,6 @@
 import React from 'react'
 import FileUpload from '../../../components/FileUpload'
+import { JobService } from '../services/jobService'
 
 type Props = {
   form: any
@@ -10,13 +11,28 @@ type Props = {
   importParsedRows: () => void
   onClearImport: () => void
   onCancel: () => void
-  onSave: () => void
+  onSave: (updatedForm?: any) => void
   editingId: string | null
 }
 
 export default function CandidateForm({ form, setForm, importPreview, importErrors, handleExcelFile, importParsedRows, onCancel, onSave, editingId, onClearImport }: Props) {
   const STATUS_LABEL: any = { selected: 'Selected', rejected: 'Rejected', hold: 'On hold', progress: 'In progress', dropped: 'Dropped out' }
   const [errors, setErrors] = React.useState<Record<string,string>>({})
+  const [jobs, setJobs] = React.useState<any[]>([])
+  const [newRemark, setNewRemark] = React.useState('')
+
+  React.useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const list = await JobService.list()
+        if (mounted) setJobs(list || [])
+      } catch (e) {
+        // ignore
+      }
+    })()
+    return () => { mounted = false }
+  }, [])
   const validate = () => {
     const e: Record<string,string> = {}
     if (!form.name || !String(form.name).trim()) e.name = 'Candidate name is required'
@@ -24,13 +40,24 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
     if (!form.email || !String(form.email).trim()) e.email = 'Email is required'
     else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(form.email))) e.email = 'Invalid email'
     if (!form.date || !String(form.date).trim()) e.date = 'Date is required'
+    if (!form.applied_job_id || !String(form.applied_job_id).trim()) e.applied_job_id = 'Assigning to a job is required'
     setErrors(e)
     return Object.keys(e).length === 0
   }
 
   const handleSave = () => {
     if (!validate()) return
-    onSave()
+    // If there's a new remark, append it to existing remarks with timestamp
+    if (newRemark && String(newRemark).trim()) {
+      const ts = new Date().toISOString().slice(0, 19).replace('T', ' ')
+      const existing = String(form.remarks || '')
+      const appended = existing ? `${existing}\n[${ts}] ${newRemark}` : `[${ts}] ${newRemark}`
+      const updatedForm = { ...form, remarks: appended }
+      setForm(updatedForm)
+      onSave(updatedForm)
+    } else {
+      onSave()
+    }
   }
 
   return (
@@ -38,21 +65,38 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
       <div className="drawer-body">
         <div className="field-row">
           <div className="field">
-            <label>Candidate name</label>
-            <input value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Jordan Lee" />
+            <label>Candidate name *</label>
+            <input required value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Jordan Lee" />
             {errors.name && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{errors.name}</div>}
           </div>
           <div className="field">
-            <label>Date of submission</label>
-            <input type="date" value={form.date || ''} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+            <label>Date of submission *</label>
+            <input required type="date" value={form.date || ''} onChange={(e) => setForm({ ...form, date: e.target.value })} />
             {errors.date && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{errors.date}</div>}
           </div>
         </div>
 
         <div className="field-row">
           <div className="field">
-              <label>Role</label>
-              <input value={form.role || ''} onChange={(e) => setForm({ ...form, role: e.target.value })} placeholder="e.g. HR Generalist" />
+              <label>Assign to job *</label>
+              <select required value={form.applied_job_id || ''} onChange={(e) => {
+                const id = e.target.value
+                const j = jobs.find(x => String(x.id) === String(id))
+                if (j) setForm({ ...form, applied_job_id: String(j.id), applied_job_title: j.title, role: j.title })
+                else setForm({ ...form, applied_job_id: '', applied_job_title: '', role: form.role })
+              }}>
+                <option value="">— select job —</option>
+                {jobs.map(j => {
+                  const numeric = String(j.job_id || j.job_ref || '').replace(/^job-/, '')
+                  const displayId = numeric || (j.job_id || j.job_ref || '')
+                  return <option key={j.id} value={j.id}>{displayId} — {j.title}</option>
+                })}
+              </select>
+              {errors.applied_job_id && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{errors.applied_job_id}</div>}
+            </div>
+          <div className="field">
+              <label>Role *</label>
+              <input required value={form.role || ''} onChange={(e) => setForm({ ...form, role: e.target.value })} placeholder="e.g. HR Generalist" />
               {errors.role && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{errors.role}</div>}
             </div>
           <div className="field">
@@ -84,8 +128,8 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
             <input value={form.ectc || ''} onChange={(e) => setForm({ ...form, ectc: e.target.value })} placeholder="e.g. 12 LPA" />
           </div>
           <div className="field">
-            <label>Email</label>
-            <input value={form.email || ''} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="name@email.com" />
+            <label>Email *</label>
+            <input required value={form.email || ''} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="name@email.com" />
             {errors.email && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{errors.email}</div>}
           </div>
           <div className="field">
@@ -119,14 +163,18 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
           <textarea value={form.intstatus || ''} onChange={(e) => setForm({ ...form, intstatus: e.target.value })} placeholder="e.g. 1st round conducted on 7th July"></textarea>
         </div>
         <div className="field">
-          <label>Remarks</label>
-          <textarea value={form.remarks || ''} onChange={(e) => setForm({ ...form, remarks: e.target.value })} placeholder="Internal notes / preference ranking"></textarea>
+          <label>Remarks (history)</label>
+          <textarea value={form.remarks || ''} readOnly style={{ minHeight: 100, whiteSpace: 'pre-wrap' }} />
+        </div>
+        <div className="field">
+          <label>Add remark</label>
+          <textarea value={newRemark} onChange={(e) => setNewRemark(e.target.value)} placeholder="Add a new remark (this will be appended to history)" />
         </div>
         <div className="field">
           <label>F2F interview availability</label>
           <input value={form.f2f || ''} onChange={(e) => setForm({ ...form, f2f: e.target.value })} placeholder="e.g. 10‑July‑26 2:00–5:00 PM" />
         </div>
-        <div className="hint">Fields mirror the columns in the original workbook. Required fields: Candidate name, Role, Email, Date.</div>
+        <div className="hint">Fields mirror the columns in the original workbook. Required fields: Candidate name, Role, Email, Date, Assign to job.</div>
       </div>
         <div className="drawer-foot">
         <div style={{ flex: 1 }} />
