@@ -90,25 +90,55 @@ serve(async (req) => {
         up = upData
       }
 
-      // If candidate entries include job_ref or job_id, fetch job title to auto-fill role
+      // If candidate entries include job_ref, job_id or applied_job_id, fetch job title to auto-fill role
       for (const c of candidates) {
         try {
+          // Try job_ref first
           if (c.job_ref) {
-            const { data: jobData, error: jobErr } = await sb.from('jobs').select('id,title').eq('job_ref', c.job_ref).single()
+            const { data: jobData, error: jobErr } = await sb.from('jobs').select('id,title,job_id,job_ref').eq('job_ref', c.job_ref).single()
             if (!jobErr && jobData) {
               c.role = c.role || jobData.title || c.job_role
               c._job_id = jobData.id
             }
-          } else if (c.job_id) {
-            // job_id may be the human-friendly id like 'job-1' or the uuid; try both
+          }
+
+          // Then check applied_job_id (frontend may send human-friendly job_id like 'job-6' or the actual uuid)
+          if (!c._job_id && c.applied_job_id) {
             let jobData: any = null
             try {
-              const r = await sb.from('jobs').select('id,title').eq('job_id', c.job_id).single()
+              const r = await sb.from('jobs').select('id,title,job_id,job_ref').eq('job_id', c.applied_job_id).single()
               if (!r.error && r.data) jobData = r.data
             } catch (_e) {}
             if (!jobData) {
-              const r2 = await sb.from('jobs').select('id,title').eq('id', c.job_id).single()
-              if (!r2.error && r2.data) jobData = r2.data
+              try {
+                const r2 = await sb.from('jobs').select('id,title,job_id,job_ref').eq('job_ref', c.applied_job_id).single()
+                if (!r2.error && r2.data) jobData = r2.data
+              } catch (_e) {}
+            }
+            if (!jobData) {
+              try {
+                const r3 = await sb.from('jobs').select('id,title,job_id,job_ref').eq('id', c.applied_job_id).single()
+                if (!r3.error && r3.data) jobData = r3.data
+              } catch (_e) {}
+            }
+            if (jobData) {
+              c.role = c.role || jobData.title || c.job_role
+              c._job_id = jobData.id
+            }
+          }
+
+          // Fallback: check job_id field (may be friendly id or uuid)
+          if (!c._job_id && c.job_id) {
+            let jobData: any = null
+            try {
+              const r = await sb.from('jobs').select('id,title,job_id,job_ref').eq('job_id', c.job_id).single()
+              if (!r.error && r.data) jobData = r.data
+            } catch (_e) {}
+            if (!jobData) {
+              try {
+                const r2 = await sb.from('jobs').select('id,title,job_id,job_ref').eq('id', c.job_id).single()
+                if (!r2.error && r2.data) jobData = r2.data
+              } catch (_e) {}
             }
             if (jobData) {
               c.role = c.role || jobData.title || c.job_role
@@ -120,10 +150,42 @@ serve(async (req) => {
         }
       }
 
+      // Ensure applied_job_id uses resolved UUID when available; avoid inserting friendly ids like 'job-6'
+      for (const c of candidates) {
+        try {
+          if (!c._job_id && c.applied_job_id) {
+            console.warn('unresolved applied_job_id before insert', { applied_job_id: c.applied_job_id })
+          }
+          c.applied_job_id = c._job_id || null
+        } catch (e) {
+          // ignore
+        }
+      }
+
       const allowed = (c: any) => ({
-        name: c.name || '',
-        role: c.job_role || c.role || '',
-        date: c.date || (new Date().toISOString().slice(0,10)),
+            name: c.name || '',
+            role: c.job_role || c.role || '',
+            date: (function() {
+              const todayIso = new Date().toISOString().slice(0,10)
+              const raw = c.date || ''
+              if (!raw) return todayIso
+              // prefer ISO yyyy-mm-dd if present
+              const isoMatch = String(raw).match(/(\d{4}-\d{2}-\d{2})/)
+              if (isoMatch) {
+                const d = new Date(isoMatch[1])
+                if (!isNaN(d.getTime())) {
+                  const dIso = d.toISOString().slice(0,10)
+                  return dIso < todayIso ? todayIso : dIso
+                }
+              }
+              // fallback: try parsing and normalize
+              const parsed = new Date(String(raw))
+              if (!isNaN(parsed.getTime())) {
+                const pIso = parsed.toISOString().slice(0,10)
+                return pIso < todayIso ? todayIso : pIso
+              }
+              return String(raw)
+            })(),
         exp: c.experience ? String(c.experience) : (c.exp || ''),
         cctc: c.current_ctc || c.cctc || '',
         ectc: c.expected_ctc || c.ectc || '',
@@ -132,11 +194,54 @@ serve(async (req) => {
         linkedin: c.linkedin || '',
         location: c.current_location || c.location || '',
         np: c.notice_period || c.np || '',
-        availability: c.availability || '',
+        availability: (function() {
+          const todayIso = new Date().toISOString().slice(0,10)
+          const raw = c.availability || ''
+          if (!raw) return ''
+          const m = String(raw).match(/^(\d{4}-\d{2}-\d{2})(?:\s+(.*))?$/)
+          if (m) {
+            const d = new Date(m[1])
+            if (!isNaN(d.getTime())) {
+              const dIso = d.toISOString().slice(0,10)
+              return (dIso < todayIso ? todayIso : dIso) + (m[2] ? ' ' + m[2] : '')
+            }
+          }
+          // else try to parse a date anywhere in string
+          const isoMatch = String(raw).match(/(\d{4}-\d{2}-\d{2})/)
+          if (isoMatch) {
+            const d = new Date(isoMatch[1])
+            if (!isNaN(d.getTime())) {
+              const dIso = d.toISOString().slice(0,10)
+              return String(raw).replace(isoMatch[1], dIso)
+            }
+          }
+          return String(raw)
+        })(),
         intstatus: c.intstatus || '',
         selstatus: normalizeSelectionStatus(c.selstatus),
         remarks: c.remarks || '',
-        f2f: c.f2f || '',
+        f2f: (function() {
+          const todayIso = new Date().toISOString().slice(0,10)
+          const raw = c.f2f || ''
+          if (!raw) return ''
+          const m = String(raw).match(/^(\d{4}-\d{2}-\d{2})(?:\s+(.*))?$/)
+          if (m) {
+            const d = new Date(m[1])
+            if (!isNaN(d.getTime())) {
+              const dIso = d.toISOString().slice(0,10)
+              return (dIso < todayIso ? todayIso : dIso) + (m[2] ? ' ' + m[2] : '')
+            }
+          }
+          const isoMatch = String(raw).match(/(\d{4}-\d{2}-\d{2})/)
+          if (isoMatch) {
+            const d = new Date(isoMatch[1])
+            if (!isNaN(d.getTime())) {
+              const dIso = d.toISOString().slice(0,10)
+              return String(raw).replace(isoMatch[1], dIso)
+            }
+          }
+          return String(raw)
+        })(),
         applied_job_id: c._job_id || c.applied_job_id || c.job_id || null,
         applied_job_title: c.applied_job_title || c.job_title || c.job_role || c.role || null
       })
@@ -159,7 +264,36 @@ serve(async (req) => {
       const id = body.id || body.candidate?.id
       const updates = body.updates || body.candidate || {}
       if (!id) return new Response(JSON.stringify({ error: 'Missing id for update' }), { status: 400, headers: corsHeaders })
+      // normalize selection status
       if (updates.selstatus) updates.selstatus = normalizeSelectionStatus(updates.selstatus)
+      // Resolve any friendly job identifiers in update payload to real UUIDs
+      try {
+        if (updates.applied_job_id || updates.job_id || updates.job_ref) {
+          const probe = updates.applied_job_id || updates.job_id || updates.job_ref
+          let jobData: any = null
+          try {
+            const r = await sb.from('jobs').select('id').eq('job_id', probe).single()
+            if (!r.error && r.data) jobData = r.data
+          } catch (_e) {}
+          if (!jobData) {
+            try {
+              const r2 = await sb.from('jobs').select('id').eq('job_ref', probe).single()
+              if (!r2.error && r2.data) jobData = r2.data
+            } catch (_e) {}
+          }
+          if (!jobData) {
+            try {
+              const r3 = await sb.from('jobs').select('id').eq('id', probe).single()
+              if (!r3.error && r3.data) jobData = r3.data
+            } catch (_e) {}
+          }
+          updates.applied_job_id = jobData ? jobData.id : null
+        }
+      } catch (e) {
+        console.error('failed to resolve job in update', e)
+        updates.applied_job_id = null
+      }
+
       const { data, error } = await sb.from('candidates').update(updates).eq('id', id).select().single()
       if (error) return new Response(JSON.stringify({ error: error.message || error }), { status: 500, headers: corsHeaders })
       return new Response(JSON.stringify({ updated: data }), { status: 200, headers: corsHeaders })

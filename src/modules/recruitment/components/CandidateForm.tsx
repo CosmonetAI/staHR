@@ -18,8 +18,47 @@ type Props = {
 export default function CandidateForm({ form, setForm, importPreview, importErrors, handleExcelFile, importParsedRows, onCancel, onSave, editingId, onClearImport }: Props) {
   const STATUS_LABEL: any = { selected: 'Selected', rejected: 'Rejected', hold: 'On hold', progress: 'In progress', dropped: 'Dropped out' }
   const [errors, setErrors] = React.useState<Record<string,string>>({})
+  const NOTICE_OPTIONS = ['Immediate', '15 Days', '30 Days', '60 Days', '90 Days']
   const [jobs, setJobs] = React.useState<any[]>([])
   const [newRemark, setNewRemark] = React.useState('')
+  const today = new Date().toISOString().slice(0, 10)
+  const TIME_SLOTS = ['09:00 AM','09:30 AM','10:00 AM','10:30 AM','11:00 AM','11:30 AM','12:00 PM','12:30 PM','01:00 PM','01:30 PM','02:00 PM','02:30 PM','03:00 PM','03:30 PM','04:00 PM','04:30 PM','05:00 PM']
+  const [availabilityDate, setAvailabilityDate] = React.useState<string>(() => {
+    try {
+      if (form && form.availability) {
+        const parts = String(form.availability).split(' ')
+        if (parts[0] && /^\d{4}-\d{2}-\d{2}$/.test(parts[0])) return parts[0]
+      }
+    } catch (e) {}
+    return ''
+  })
+  const [availabilitySlot, setAvailabilitySlot] = React.useState<string>(() => {
+    try {
+      if (form && form.availability) {
+        const parts = String(form.availability).split(' ')
+        if (parts.length > 1) return parts.slice(1).join(' ')
+      }
+    } catch (e) {}
+    return ''
+  })
+  const [f2fDate, setF2fDate] = React.useState<string>(() => {
+    try {
+      if (form && form.f2f) {
+        const parts = String(form.f2f).split(' ')
+        if (parts[0] && /^\d{4}-\d{2}-\d{2}$/.test(parts[0])) return parts[0]
+      }
+    } catch (e) {}
+    return ''
+  })
+  const [f2fSlot, setF2fSlot] = React.useState<string>(() => {
+    try {
+      if (form && form.f2f) {
+        const parts = String(form.f2f).split(' ')
+        if (parts.length > 1) return parts.slice(1).join(' ')
+      }
+    } catch (e) {}
+    return ''
+  })
 
   React.useEffect(() => {
     let mounted = true
@@ -33,6 +72,21 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
     })()
     return () => { mounted = false }
   }, [])
+  const selectedJobValue = React.useMemo(() => {
+    try {
+      const key = String(form.applied_job_id || '')
+      if (!key) return ''
+      // first try to find by friendly job_id or job_ref
+      const byFriendly = jobs.find(j => String(j.job_id || j.job_ref || '').toLowerCase() === key.toLowerCase())
+      if (byFriendly) return String(byFriendly.job_id || byFriendly.job_ref || byFriendly.id || '')
+      // then try to find by numeric/uuid id
+      const byId = jobs.find(j => String(j.id || '') === key)
+      if (byId) return String(byId.job_id || byId.job_ref || byId.id || '')
+      return key
+    } catch (err) {
+      return String(form.applied_job_id || '')
+    }
+  }, [form.applied_job_id, jobs])
   const validate = () => {
     const e: Record<string,string> = {}
     if (!form.name || !String(form.name).trim()) e.name = 'Candidate name is required'
@@ -40,7 +94,33 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
     if (!form.email || !String(form.email).trim()) e.email = 'Email is required'
     else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(form.email))) e.email = 'Invalid email'
     if (!form.date || !String(form.date).trim()) e.date = 'Date is required'
+    else {
+      try {
+        const d = new Date(String(form.date))
+        const todayDate = new Date(new Date().toISOString().slice(0,10))
+        if (!isNaN(d.getTime()) && d < todayDate) e.date = 'Date cannot be in the past'
+      } catch (err) {}
+    }
     if (!form.applied_job_id || !String(form.applied_job_id).trim()) e.applied_job_id = 'Assigning to a job is required'
+    // phone optional but if present must be digits
+    if (form.phone) {
+      const p = String(form.phone).replace(/[^0-9]/g, '')
+      if (!/^[0-9]{7,15}$/.test(p)) e.phone = 'Phone should be 7-15 digits'
+    }
+    // CTC/ECTC should be numeric-ish (allow formats like '12 LPA')
+    const moneyCheck = (val: any) => {
+      if (val === null || typeof val === 'undefined' || String(val).trim() === '') return true
+      const s = String(val).replace(/[,\s]/g, '')
+      return !!s.match(/^-?\d+(?:\.\d+)?/)
+    }
+    if (!moneyCheck(form.cctc)) e.cctc = 'Current CTC looks invalid'
+    if (!moneyCheck(form.ectc)) e.ectc = 'Expected CTC looks invalid'
+    // notice period should be one of the allowed options or a number with 'Days'
+    if (form.np) {
+      const np = String(form.np).trim()
+      const ok = NOTICE_OPTIONS.includes(np) || /^\d+\s*Days$/i.test(np)
+      if (!ok) e.np = 'Notice period must be a valid option (e.g. 30 Days)'
+    }
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -55,10 +135,17 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
       const updatedForm = { ...form, remarks: appended }
       setForm(updatedForm)
       onSave(updatedForm)
+      setNewRemark('')
     } else {
       onSave()
+      setNewRemark('')
     }
   }
+
+  React.useEffect(() => {
+    // Clear the temporary newRemark whenever the editing candidate changes
+    setNewRemark('')
+  }, [editingId])
 
   return (
     <>
@@ -67,29 +154,31 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
           <div className="field">
             <label>Candidate name *</label>
             <input required value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Jordan Lee" />
-            {errors.name && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{errors.name}</div>}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          </div>
           </div>
           <div className="field">
             <label>Date of submission *</label>
-            <input required type="date" value={form.date || ''} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+            <input required type="date" min={today} value={form.date || ''} onChange={(e) => setForm({ ...form, date: e.target.value })} />
             {errors.date && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{errors.date}</div>}
           </div>
         </div>
 
+            {errors.np && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{errors.np}</div>}
         <div className="field-row">
           <div className="field">
               <label>Assign to job *</label>
-              <select required value={form.applied_job_id || ''} onChange={(e) => {
-                const id = e.target.value
-                const j = jobs.find(x => String(x.id) === String(id))
-                if (j) setForm({ ...form, applied_job_id: String(j.id), applied_job_title: j.title, role: j.title })
-                else setForm({ ...form, applied_job_id: '', applied_job_title: '', role: form.role })
+              <select required value={selectedJobValue || ''} onChange={(e) => {
+                const selected = e.target.value
+                const j = jobs.find(x => String(x.job_id || x.job_ref || x.id) === String(selected))
+                if (j) setForm({ ...form, applied_job_id: String(selected), role: j.title || form.role, applied_job_title: j.title || form.applied_job_title })
+                else setForm({ ...form, applied_job_id: '' })
               }}>
                 <option value="">— select job —</option>
                 {jobs.map(j => {
-                  const numeric = String(j.job_id || j.job_ref || '').replace(/^job-/, '')
-                  const displayId = numeric || (j.job_id || j.job_ref || '')
-                  return <option key={j.id} value={j.id}>{displayId} — {j.title}</option>
+                  const storedId = j.job_id || j.job_ref || j.id
+                  const displayId = String(storedId || '')
+                  return <option key={j.id} value={displayId}>{displayId}</option>
                 })}
               </select>
               {errors.applied_job_id && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{errors.applied_job_id}</div>}
@@ -150,13 +239,37 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
           </div>
           <div className="field">
             <label>Notice period</label>
-            <input value={form.np || ''} onChange={(e) => setForm({ ...form, np: e.target.value })} placeholder="e.g. 60 Days" />
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <select value={NOTICE_OPTIONS.includes(String(form.np)) ? String(form.np) : ''} onChange={(e) => {
+                const v = e.target.value
+                setForm({ ...form, np: v })
+              }}>
+                <option value="">— select —</option>
+                {NOTICE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
           </div>
         </div>
 
         <div className="field">
           <label>Interview availability</label>
-          <input value={form.availability || ''} onChange={(e) => setForm({ ...form, availability: e.target.value })} placeholder="e.g. As per schedule / date-time" />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="date" min={today} value={availabilityDate || ''} onChange={(e) => {
+              const d = e.target.value
+              setAvailabilityDate(d)
+              const combined = d && availabilitySlot ? `${d} ${availabilitySlot}` : d || ''
+              setForm({ ...form, availability: combined })
+            }} />
+            <select value={availabilitySlot || ''} onChange={(e) => {
+              const s = e.target.value
+              setAvailabilitySlot(s)
+              const combined = availabilityDate && s ? `${availabilityDate} ${s}` : availabilityDate || s || ''
+              setForm({ ...form, availability: combined })
+            }}>
+              <option value="">— select slot —</option>
+              {TIME_SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
         </div>
         <div className="field">
           <label>Interview status</label>
@@ -164,15 +277,40 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
         </div>
         <div className="field">
           <label>Remarks (history)</label>
-          <textarea value={form.remarks || ''} readOnly style={{ minHeight: 100, whiteSpace: 'pre-wrap' }} />
+          <textarea
+            value={form.remarks || ''}
+            readOnly={!!editingId}
+            onChange={(e) => {
+              if (!editingId) setForm({ ...form, remarks: e.target.value })
+            }}
+            style={{ minHeight: 100, whiteSpace: 'pre-wrap' }}
+          />
         </div>
-        <div className="field">
-          <label>Add remark</label>
-          <textarea value={newRemark} onChange={(e) => setNewRemark(e.target.value)} placeholder="Add a new remark (this will be appended to history)" />
-        </div>
+        {editingId ? (
+          <div className="field">
+            <label>Add remark</label>
+            <textarea value={newRemark} onChange={(e) => setNewRemark(e.target.value)} placeholder="Add a new remark (this will be appended to history)" />
+          </div>
+        ) : null}
         <div className="field">
           <label>F2F interview availability</label>
-          <input value={form.f2f || ''} onChange={(e) => setForm({ ...form, f2f: e.target.value })} placeholder="e.g. 10‑July‑26 2:00–5:00 PM" />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="date" min={today} value={f2fDate || ''} onChange={(e) => {
+              const d = e.target.value
+              setF2fDate(d)
+              const combined = d && f2fSlot ? `${d} ${f2fSlot}` : d || ''
+              setForm({ ...form, f2f: combined })
+            }} />
+            <select value={f2fSlot || ''} onChange={(e) => {
+              const s = e.target.value
+              setF2fSlot(s)
+              const combined = f2fDate && s ? `${f2fDate} ${s}` : f2fDate || s || ''
+              setForm({ ...form, f2f: combined })
+            }}>
+              <option value="">— select slot —</option>
+              {TIME_SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
         </div>
         <div className="hint">Fields mirror the columns in the original workbook. Required fields: Candidate name, Role, Email, Date, Assign to job.</div>
       </div>

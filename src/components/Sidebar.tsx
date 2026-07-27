@@ -23,7 +23,6 @@ export default function Sidebar() {
               <NavLink className={navClass} to="/recruitment" end>Dashboard</NavLink>
               <NavLink className={navClass} to="/candidates">Candidates</NavLink>
               <NavLink className={navClass} to="/recruitment/jobs">Jobs</NavLink>
-              <NavLink className={navClass} to="/upload">Upload Excel</NavLink>
             </div>
           )}
         </div>

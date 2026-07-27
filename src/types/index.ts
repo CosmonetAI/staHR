@@ -12,7 +12,7 @@ export type Candidate = {
   phone: string
   linkedin?: string
   location?: string
-  np?: string
+  np?: string | NoticePeriodOption
   availability?: string
   intstatus?: string
   selstatus?: string
@@ -23,7 +23,7 @@ export type Candidate = {
   current_location?: string
   preferred_location?: string
   skills?: string
-  notice_period?: string
+  notice_period?: string | NoticePeriodOption
   current_ctc?: number
   expected_ctc?: number
   resume?: string
@@ -51,3 +51,5 @@ export type Job = {
   status?: 'Open' | 'Closed' | string
   desc?: string
 }
+
+export type NoticePeriodOption = 'Immediate' | '15 Days' | '30 Days' | '60 Days' | '90 Days'

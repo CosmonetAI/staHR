@@ -21,6 +21,7 @@ import {
   FaTrashAlt,
   FaUserCheck
 } from 'react-icons/fa'
+import { JobService } from '../services/jobService'
 
 export default function Candidates() {
   const location = useLocation()
@@ -55,6 +56,27 @@ export default function Candidates() {
   const [importPreview, setImportPreview] = useState<any[]>([])
   const [importErrors, setImportErrors] = useState<any[]>([])
   const [openFilter, setOpenFilter] = useState<string | null>(null)
+  const [jobsMap, setJobsMap] = useState<Record<string, any>>({})
+
+  // load jobs once into a lookup map keyed by job_id, job_ref, and id
+  React.useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const list = await JobService.list()
+        if (!mounted) return
+        const map: Record<string, any> = {};
+        ;(list || []).forEach((j: any) => {
+          const keys = [j.job_id, j.job_ref, j.id].filter(Boolean).map((k: any) => String(k))
+          keys.forEach((k: string) => { map[k] = j })
+        })
+        setJobsMap(map)
+      } catch (e) {
+        // ignore
+      }
+    })()
+    return () => { mounted = false }
+  }, [])
 
   React.useEffect(() => {
     const role = new URLSearchParams(location.search).get('role')
@@ -120,22 +142,24 @@ export default function Candidates() {
       const visibleRows = filteredRows
       const toExport = selectedIds.length ? rows.filter(r => selectedIds.includes(r.id)) : visibleRows
       if (!toExport.length) { addToast('No rows to export', 'info'); return }
+      // Use headers that match the upload/import expected column names
       const colsDef = [
-        { k: 'id', h: 'ID' },
-        { k: 'role', h: 'Role' },
-        { k: 'name', h: 'Name' },
-        { k: 'email', h: 'Email' },
-        { k: 'phone', h: 'Phone' },
-        { k: 'exp', h: 'Experience' },
-        { k: 'cctc', h: 'Current CTC' },
-        { k: 'ectc', h: 'Expected CTC' },
-        { k: 'location', h: 'Location' },
-        { k: 'np', h: 'Notice Period' },
-        { k: 'date', h: 'Submitted Date' },
-        { k: 'selstatus', h: 'Selection Status' },
-        { k: 'intstatus', h: 'Interview Status' },
-        { k: 'remarks', h: 'Remarks' },
-        { k: 'linkedin', h: 'LinkedIn' }
+        { k: 'name', h: 'name', v: (r: any) => r.name || '' },
+        { k: 'email', h: 'email', v: (r: any) => r.email || '' },
+        { k: 'phone', h: 'phone', v: (r: any) => r.phone || '' },
+        { k: 'experience', h: 'experience', v: (r: any) => (r.exp || r.experience || '') },
+        { k: 'current_ctc', h: 'current_ctc', v: (r: any) => (r.cctc || r.current_ctc || '') },
+        { k: 'expected_ctc', h: 'expected_ctc', v: (r: any) => (r.ectc || r.expected_ctc || '') },
+        { k: 'current_location', h: 'current_location', v: (r: any) => (r.location || r.current_location || '') },
+        { k: 'notice_period', h: 'notice_period', v: (r: any) => (r.np || r.notice_period || '') },
+        { k: 'date', h: 'date', v: (r: any) => (r.date || '') },
+        { k: 'role', h: 'role', v: (r: any) => (r.role || r.job_role || '') },
+        { k: 'selstatus', h: 'selstatus', v: (r: any) => (r.selstatus || '') },
+        { k: 'intstatus', h: 'intstatus', v: (r: any) => (r.intstatus || '') },
+        { k: 'remarks', h: 'remarks', v: (r: any) => (r.remarks || '') },
+        { k: 'linkedin', h: 'linkedin', v: (r: any) => (r.linkedin || '') },
+        { k: 'applied_job_title', h: 'applied_job_title', v: (r: any) => (r.applied_job_title || r.job_title || '') },
+        { k: 'f2f', h: 'f2f', v: (r: any) => (r.f2f || '') }
       ]
       const esc = (v: any) => {
         if (v === null || typeof v === 'undefined') return ''
@@ -143,7 +167,8 @@ export default function Candidates() {
         return `"${s}"`
       }
       const header = colsDef.map(c => esc(c.h)).join(',')
-      const csv = [header].concat(toExport.map(r => colsDef.map(c => esc(r[c.k])).join(','))).join('\n')
+      const rowsCsv = toExport.map(r => colsDef.map(c => esc((c.v ? c.v(r) : r[c.k]))).join(','))
+      const csv = [header].concat(rowsCsv).join('\n')
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -162,7 +187,25 @@ export default function Candidates() {
   const filteredRows = useMemo(() => {
     let tmp = rows.slice()
     if (selectedRoles.length) tmp = tmp.filter(r => selectedRoles.includes((r.role || 'Unassigned').toString()))
-    if (search) tmp = tmp.filter((d: any) => (d.name + d.email + d.location).toLowerCase().includes(search.toLowerCase()))
+    if (search) {
+      const s = String(search).toLowerCase()
+      tmp = tmp.filter((d: any) => {
+        const base = String((d.name || '') + ' ' + (d.email || '') + ' ' + (d.location || '') + ' ' + (d.applied_job_id || '') + ' ' + (d.applied_job_title || '') + ' ' + (d.job_id || '') + ' ' + (d.job_ref || '')).toLowerCase()
+        // If applied_job_id references a job record, include that job's friendly ids/titles in the search
+        let jobExtras = ''
+        try {
+          const key = String(d.applied_job_id || d.job_id || d.job_ref || '')
+          const job = jobsMap[key]
+          if (job) {
+            jobExtras = String((job.job_id || '') + ' ' + (job.job_ref || '') + ' ' + (job.title || '')).toLowerCase()
+          }
+        } catch (err) {
+          // ignore
+        }
+        const combined = (base + ' ' + jobExtras).toLowerCase()
+        return combined.includes(s)
+      })
+    }
     if (statusFilters.length) tmp = tmp.filter((d: any) => statusFilters.includes(normalizedStatus(d.selstatus)))
     tmp = tmp.slice().sort((a: any, b: any) => {
       for (const sortField of sortFields) {
@@ -177,7 +220,7 @@ export default function Candidates() {
       return 0
     })
     return tmp
-  }, [rows, selectedRoles, search, statusFilters, sortFields])
+  }, [rows, selectedRoles, search, statusFilters, sortFields, jobsMap])
 
   // regenerate grouping from filtered rows so the UI shows filtered buckets
   const grouped = useMemo(() => {
@@ -250,13 +293,56 @@ export default function Candidates() {
     return /^\d+(\.\d+)?$/.test(text) ? `${text} days` : text
   }
 
+  // Close open popup menus (filters / status menu) when clicking outside
+  React.useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      try {
+        const target = e.target as HTMLElement | null
+        if (!target) return
+        // if click is inside any filter-menu, do not close filter
+        if (!target.closest('.filter-menu')) {
+          setOpenFilter(null)
+        }
+        // if click is inside status-menu or status-cell, do not close status menu
+        if (!target.closest('.status-menu') && !target.closest('.status-cell')) {
+          setStatusMenuFor(null)
+        }
+      } catch (err) {
+        // ignore
+      }
+    }
+    document.addEventListener('click', onDocClick)
+    return () => document.removeEventListener('click', onDocClick)
+  }, [])
+
+  // When a row is expanded, ensure its job info is resolved (fetch if unknown)
+  React.useEffect(() => {
+    if (!expandedId) return
+    const candidate = rows.find(r => String(r.id) === String(expandedId))
+    if (!candidate) return
+    const key = String(candidate.applied_job_id || candidate.job_id || candidate.job_ref || '')
+    if (!key) return
+    if (jobsMap[key]) return
+    let mounted = true
+    ;(async () => {
+      try {
+        const job = await JobService.get(key)
+        if (!mounted || !job) return
+        setJobsMap(prev => ({ ...prev, [String(job.job_id || job.job_ref || job.id)]: job, [String(job.id)]: job }))
+      } catch (e) {
+        // ignore
+      }
+    })()
+    return () => { mounted = false }
+  }, [expandedId, rows, jobsMap])
+
   return (
     <div className="container">
       <h2>Candidates</h2>
       <div className="toolbar candidates-toolbar" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
         <div className="search-box">
-            <span>🔍</span>
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, location…" />
+          <span>🔍</span>
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, location, or job id (e.g. job-4)…" />
         </div>
         <div className={`filter-menu ${openFilter === 'status' ? 'open' : ''}`}>
           <button type="button" className="filter-summary" onClick={() => toggleFilterMenu('status')}>{statusFilterLabel}</button>
@@ -397,7 +483,6 @@ export default function Candidates() {
                         <td>
                           <div className="cand-name">{c.name}</div>
                           <div className="cand-sub">{c.email}</div>
-                          <div className="pipeline">{STAGE_ORDER.map((s, i) => <div key={s} className={`dot ${(stageIdx >= 0 && i <= stageIdx) ? 'on' : ''}`} />)}</div>
                         </td>
                         <td className="experience-col">{formatExperience(c.exp)}</td>
                         <td className="mono">
@@ -459,7 +544,22 @@ export default function Candidates() {
                                   <div className="candidate-avatar">{display(c.name).slice(0, 1).toUpperCase()}</div>
                                   <div>
                                     <div className="candidate-profile-name">{display(c.name)}</div>
-                                    <div className="candidate-profile-sub">{display(c.role)} candidate profile</div>
+                                    
+                                       <div style={{ marginTop: 6, display: 'flex', gap: 16, alignItems: 'center' }}>
+                                         <div style={{ fontSize: 13 }}><strong>Job Role:</strong> <span style={{ marginLeft: 6 }}>{display(c.applied_job_title || c.role || '-')}</span></div>
+                                         <div style={{ fontSize: 13 }}>
+                                           <strong>Job ID:</strong>
+                                           <span style={{ marginLeft: 6 }}>
+                                             {(() => {
+                                               const key = String(c.applied_job_id || c.job_id || c.job_ref || '')
+                                               const job = jobsMap[key]
+                                               if (job && job.job_id) return String(job.job_id)
+                                               // fallback to applied_job_id if present
+                                               return display(c.applied_job_id || c.job_id || '-')
+                                             })()}
+                                           </span>
+                                         </div>
+                                       </div>
                                   </div>
                                 </div>
                                 <span className={`badge ${normalizedStatus(c.selstatus)}`}>{statusLabel(c.selstatus)}</span>
@@ -515,6 +615,7 @@ export default function Candidates() {
                                     <div>{formatExperience(c.exp)}</div>
                                   </div>
                                 </div>
+                                
                                 <div className="profile-field">
                                   <FaMoneyBillWave />
                                   <div>
