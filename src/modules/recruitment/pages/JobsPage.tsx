@@ -10,6 +10,7 @@ export default function JobsPage() {
   const { data: candidatesData } = useQuery(['candidates'], () => CandidateService.list(1, 1000))
   const [jobs, setJobs] = useState<any[]>([])
   const [loadingJobs, setLoadingJobs] = useState(false)
+  const [jobErrors, setJobErrors] = useState<Record<string,string>>({})
 
   useEffect(() => {
     let mounted = true
@@ -58,14 +59,28 @@ export default function JobsPage() {
     setNewJob({ title: '', location: '', openings: 1, posted: today, status: 'Open', desc: '' })
   }
 
+  function validateJob(j: any) {
+    const e: Record<string,string> = {}
+    if (!j) return { valid: false, errors: e }
+    if (!j.title || !String(j.title).trim()) e.title = 'Job title is required'
+    if (!j.location || !String(j.location).trim()) e.location = 'Location is required'
+    const openings = Number(j.openings)
+    if (!Number.isFinite(openings) || openings <= 0) e.openings = 'Openings must be a positive number'
+    // posted date
+    if (!j.posted || isNaN(Date.parse(String(j.posted)))) e.posted = 'Invalid posted date'
+    return { valid: Object.keys(e).length === 0, errors: e }
+  }
+
   function closeNewJob() {
     setNewJob(null)
   }
 
   async function createJob() {
     if (!newJob) return
-    if (!newJob.title || !newJob.location) {
-      addToast('Job title and location required', 'error', 2000)
+    const res = validateJob(newJob)
+    setJobErrors(res.errors)
+    if (!res.valid) {
+      addToast('Fix validation errors in job form', 'error', 2000)
       return
     }
     try {
@@ -110,11 +125,11 @@ export default function JobsPage() {
           const apps = applicationCount(job)
 
           return (
-            <div key={job.id} className="card job-card">
+            <div key={job.id} className="card job-card" onClick={() => openDetails(job)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') openDetails(job) }}>
               <div className="job-card-head">
                 <div className="job-title-block">
                   <button className="job-title" onClick={() => openDetails(job)}>{job.title}</button>
-                  <div className="job-meta">{job.location} • {String(job.job_id || job.job_ref || '').replace(/^job-/, '')} • Posted {job.posted}</div>
+                  <div className="job-meta">{job.location} • JOB ID: {String(job.job_id || job.job_ref || job.id || '')} • Posted {job.posted}</div>
                 </div>
                 <div className={`badge ${job.status === 'Open' ? 'progress' : 'dropped'}`}>{job.status}</div>
               </div>
@@ -131,7 +146,9 @@ export default function JobsPage() {
               </div>
 
               <div className="job-actions">
-                <button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); navigate('/candidates?job_ref=' + encodeURIComponent(job.job_id || job.job_ref || job.id) + '&job_title=' + encodeURIComponent(job.title)) }}>Apply</button>
+                {job.status !== 'Closed' && (
+                  <button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); navigate('/candidates?job_ref=' + encodeURIComponent(job.job_id || job.job_ref || job.id) + '&job_title=' + encodeURIComponent(job.title)) }}>Apply</button>
+                )}
                 <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); navigate('/candidates?role=' + encodeURIComponent(job.title)) }}>View candidates</button>
                 <button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); openDetails(job) }}>Details</button>
                 <button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); setNewJob({ ...job }) }}>Edit</button>
@@ -148,44 +165,73 @@ export default function JobsPage() {
       <div className={`overlay ${selectedJob ? 'open' : ''}`} onClick={closeDetails} />
       <div className={`modal ${selectedJob ? 'open' : ''}`} onClick={(e) => e.stopPropagation()}>
         {selectedJob && (
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <div className="drawer-head">
+          <div className="modal-content">
+            <div className="drawer-head">
               <div>
                 <h2>{selectedJob.title}</h2>
-                <div className="sub">{selectedJob.location} • ID: {String(selectedJob.job_id || selectedJob.job_ref || '').replace(/^job-/, '')} • Posted {selectedJob.posted}</div>
+                <div className="sub" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  <span>City: {selectedJob.city || selectedJob.location || '-'}</span>
+                  <span>Posted date: {selectedJob.posted || '-'}</span>
+                  <span>JOB ID: {String(selectedJob.job_id || selectedJob.job_ref || selectedJob.id || '')}</span>
+                  {selectedJob.status === 'Closed' && (
+                    <span>Closed date: {selectedJob.closed_date || selectedJob.closed_at || selectedJob.updated_at || '-'}</span>
+                  )}
+                </div>
               </div>
               <button className="drawer-close" onClick={closeDetails}>✕</button>
             </div>
-              <div className="drawer-body">
-              <p>{selectedJob.summary || selectedJob.description || selectedJob.desc}</p>
-              <div style={{ marginTop: 12 }}>
-                <div><strong>Department:</strong> {selectedJob.department || '-'}</div>
-                
-                <div><strong>Employment type:</strong> {selectedJob.employment_type || '-'}</div>
-                <div><strong>Work mode:</strong> {selectedJob.work_mode || '-'}</div>
-                <div><strong>Experience:</strong> {(selectedJob.experience_min || '-') + (selectedJob.experience_max ? ` - ${selectedJob.experience_max}` : '')}</div>
-                <div><strong>Skills:</strong> {(selectedJob.technical_skills && Array.isArray(selectedJob.technical_skills)) ? selectedJob.technical_skills.join(', ') : (selectedJob.technical_skills || '-')}</div>
-                <div style={{ marginTop: 8 }}><strong>Responsibilities:</strong><div style={{ whiteSpace: 'pre-wrap' }}>{selectedJob.responsibilities || '-'}</div></div>
-                
+
+            <div className="drawer-body">
+              <div style={{ marginBottom: 12 }}>
+                <h3>Summary:</h3>
+                <p style={{ whiteSpace: 'pre-wrap' }}>{selectedJob.summary || selectedJob.description || selectedJob.desc || '-'}</p>
               </div>
-              <div className="job-detail-metrics">
-                <div className="job-metric">
-                  <div className="job-metric-value">{selectedJob.openings}</div>
-                  <div className="job-metric-label">Opening{selectedJob.openings === 1 ? '' : 's'}</div>
+
+              <div style={{ marginTop: 8 }}>
+                <h3>Job Description:</h3>
+                <div style={{ whiteSpace: 'pre-wrap', marginBottom: 12 }}>{selectedJob.job_description || selectedJob.description || selectedJob.desc || '-'}</div>
+
+                { (selectedJob.technical_skills && Array.isArray(selectedJob.technical_skills)) || selectedJob.technical_skills ? (
+                  <div style={{ marginBottom: 12 }}>
+                    <h4>Required Skills:</h4>
+                    <ul>
+                      {(Array.isArray(selectedJob.technical_skills) ? selectedJob.technical_skills : String(selectedJob.technical_skills).split(/[,\n]+/)).filter(Boolean).map((s: any, i: number) => <li key={i}>{String(s).trim()}</li>)}
+                    </ul>
+                  </div>
+                ) : null }
+
+                { (selectedJob.responsibilities || '').trim() ? (
+                  <div style={{ marginBottom: 12 }}>
+                    <h4>Key Responsibilities:</h4>
+                    <ul>
+                      {String(selectedJob.responsibilities).split(/\n+/).filter(Boolean).map((r: any, i: number) => <li key={i}>{r}</li>)}
+                    </ul>
+                  </div>
+                ) : null }
+
+                <div className="job-detail-metrics" style={{ marginTop: 6 }}>
+                  <div className="job-metric">
+                    <div className="job-metric-value">{selectedJob.openings}</div>
+                    <div className="job-metric-label">Opening{selectedJob.openings === 1 ? '' : 's'}</div>
+                  </div>
+                  <div className="job-metric">
+                    <div className="job-metric-value">{applicationCount(selectedJob)}</div>
+                    <div className="job-metric-label">Application{applicationCount(selectedJob) === 1 ? '' : 's'}</div>
+                  </div>
                 </div>
-                <div className="job-metric">
-                  <div className="job-metric-value">{applicationCount(selectedJob)}</div>
-                  <div className="job-metric-label">Application{applicationCount(selectedJob) === 1 ? '' : 's'}</div>
-                </div>
+
+                <p style={{ marginTop: 8 }}><strong>Status:</strong> <span className={`badge ${selectedJob.status === 'Open' ? 'progress' : 'dropped'}`}>{selectedJob.status}</span></p>
               </div>
-              <p><strong>Status:</strong> <span className={`badge ${selectedJob.status === 'Open' ? 'progress' : 'dropped'}`}>{selectedJob.status}</span></p>
             </div>
-              <div style={{ marginTop: 8 }} className="hint">Required fields: Job title, Location, Openings.</div>
-              <div className="drawer-foot">
+
+            <div style={{ marginTop: 8 }} className="hint">Required fields: Job title, Location, Openings.</div>
+            <div className="drawer-foot">
               <div />
               <div>
                 <button className="btn btn-ghost" onClick={closeDetails}>Close</button>
-                <button className="btn btn-primary" style={{ marginLeft: 8 }} onClick={() => { closeDetails(); navigate('/candidates?job_ref=' + encodeURIComponent(selectedJob.job_id || selectedJob.job_ref || selectedJob.id) + '&job_title=' + encodeURIComponent(selectedJob.title)) }}>Apply</button>
+                {selectedJob.status !== 'Closed' ? (
+                  <button className="btn btn-primary" style={{ marginLeft: 8 }} onClick={() => { closeDetails(); navigate('/candidates?job_ref=' + encodeURIComponent(selectedJob.job_id || selectedJob.job_ref || selectedJob.id) + '&job_title=' + encodeURIComponent(selectedJob.title)) }}>Apply</button>
+                ) : null}
               </div>
             </div>
           </div>
@@ -197,7 +243,7 @@ export default function JobsPage() {
       <div className={`overlay ${newJob ? 'open' : ''}`} onClick={closeNewJob} />
       <div className={`modal ${newJob ? 'open' : ''}`} onClick={(e) => e.stopPropagation()}>
         {newJob && (
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <div className="modal-content">
             <div className="drawer-head">
               <div>
                 <h2>Add Job</h2>
@@ -210,10 +256,12 @@ export default function JobsPage() {
                 <div className="field">
                   <label>Job title *</label>
                   <input required placeholder="e.g. Software Engineer" value={newJob.title} onChange={(e) => setNewJob({ ...newJob, title: e.target.value })} />
+                  {jobErrors.title && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{jobErrors.title}</div>}
                 </div>
                 <div className="field">
                   <label>Location *</label>
                   <input required placeholder="e.g. Bengaluru, India" value={newJob.location} onChange={(e) => setNewJob({ ...newJob, location: e.target.value })} />
+                  {jobErrors.location && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{jobErrors.location}</div>}
                 </div>
               </div>
               <div className="field-row">
@@ -257,6 +305,7 @@ export default function JobsPage() {
                 <div className="field">
                   <label>Openings *</label>
                   <input required placeholder="Number of openings" type="number" min="1" value={newJob.openings} onChange={(e) => setNewJob({ ...newJob, openings: e.target.value })} />
+                  {jobErrors.openings && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{jobErrors.openings}</div>}
                 </div>
                 <div className="field">
                   <label>Posted date</label>
