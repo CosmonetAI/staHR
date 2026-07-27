@@ -90,6 +90,36 @@ serve(async (req) => {
         up = upData
       }
 
+      // If candidate entries include job_ref or job_id, fetch job title to auto-fill role
+      for (const c of candidates) {
+        try {
+          if (c.job_ref) {
+            const { data: jobData, error: jobErr } = await sb.from('jobs').select('id,title').eq('job_ref', c.job_ref).single()
+            if (!jobErr && jobData) {
+              c.role = c.role || jobData.title || c.job_role
+              c._job_id = jobData.id
+            }
+          } else if (c.job_id) {
+            // job_id may be the human-friendly id like 'job-1' or the uuid; try both
+            let jobData: any = null
+            try {
+              const r = await sb.from('jobs').select('id,title').eq('job_id', c.job_id).single()
+              if (!r.error && r.data) jobData = r.data
+            } catch (_e) {}
+            if (!jobData) {
+              const r2 = await sb.from('jobs').select('id,title').eq('id', c.job_id).single()
+              if (!r2.error && r2.data) jobData = r2.data
+            }
+            if (jobData) {
+              c.role = c.role || jobData.title || c.job_role
+              c._job_id = jobData.id
+            }
+          }
+        } catch (e) {
+          console.error('failed to resolve job for candidate', e)
+        }
+      }
+
       const allowed = (c: any) => ({
         name: c.name || '',
         role: c.job_role || c.role || '',
@@ -106,7 +136,9 @@ serve(async (req) => {
         intstatus: c.intstatus || '',
         selstatus: normalizeSelectionStatus(c.selstatus),
         remarks: c.remarks || '',
-        f2f: c.f2f || ''
+        f2f: c.f2f || '',
+        applied_job_id: c._job_id || c.applied_job_id || c.job_id || null,
+        applied_job_title: c.applied_job_title || c.job_title || c.job_role || c.role || null
       })
 
       const candidatesWithUpload = candidates.map((c: any) => ({ ...allowed(c), ...(up ? { upload_id: up.id } : {}) }))

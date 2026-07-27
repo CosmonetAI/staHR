@@ -61,6 +61,37 @@ export default function Candidates() {
     if (role) setSelectedRoles([role])
   }, [location.search])
 
+  // If navigated from a job Apply action, prefill and open the Add Candidate drawer
+  React.useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const jobRef = params.get('job_ref')
+    const jobId = params.get('job_id')
+    const jobTitle = params.get('job_title')
+    if (jobRef || jobId || jobTitle) {
+      ;(async () => {
+        let title = jobTitle || ''
+        let resolvedJobId = jobId || ''
+        if (!title && jobRef) {
+          try {
+            const FUNCTIONS_BASE = import.meta.env.VITE_FUNCTIONS_BASE || '/functions/v1'
+            const anon = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '')
+            const res = await fetch(`${FUNCTIONS_BASE}/jobs/${encodeURIComponent(jobRef)}`, { headers: { 'Content-Type': 'application/json', ...(anon ? { apikey: anon } : {}) } })
+            if (res.ok) {
+              const json = await res.json()
+              title = json?.title || title
+              resolvedJobId = json?.id || resolvedJobId
+            }
+          } catch (e) {
+            console.error('Failed to resolve job ref', e)
+          }
+        }
+        setEditingId(null)
+        setForm({ role: title || '', name: '', date: new Date().toISOString().slice(0, 10), exp: '', cctc: '', ectc: '', email: '', phone: '', linkedin: '', location: '', np: '', availability: '', intstatus: '', selstatus: 'progress', remarks: '', f2f: '', applied_job_id: resolvedJobId || jobRef || '', applied_job_title: title || '' })
+        setDrawerOpen(true)
+      })()
+    }
+  }, [location.search])
+
   function normalizedStatus(status: string) {
     const s = String(status || 'progress').toLowerCase()
     if (s.includes('select')) return 'selected'
@@ -503,7 +534,7 @@ export default function Candidates() {
                                 </div>
                                 <div className="candidate-note-card">
                                   <div className="note-card-head"><FaStickyNote /><label>Remarks</label></div>
-                                  <p>{display(c.remarks)}</p>
+                                  <div style={{ whiteSpace: 'pre-wrap' }}>{c.remarks || '-'}</div>
                                 </div>
                               </div>
                             </div>
@@ -582,10 +613,11 @@ export default function Candidates() {
           }}
           onClearImport={() => { setImportPreview([]); setImportErrors([]) }}
           onCancel={() => { setDrawerOpen(false); setEditingId(null) }}
-          onSave={async () => {
+          onSave={async (updatedForm?: any) => {
+            const effectiveForm = updatedForm || form
             try {
               if (editingId) {
-                const updated = await CandidateService.update(String(editingId), form)
+                const updated = await CandidateService.update(String(editingId), effectiveForm)
                 if (!updated) { addToast('Update did not affect any row', 'error'); return }
                 setRows(prev => {
                   const merged = { ...prev.find(r => String(r.id) === String(editingId)), ...updated, updated_at: updated.updated_at || new Date().toISOString() }
@@ -593,7 +625,7 @@ export default function Candidates() {
                 })
                 addToast('Candidate updated', 'success')
               } else {
-                const created = await CandidateService.create(form)
+                const created = await CandidateService.create(effectiveForm)
                 setRows(prev => [created, ...prev])
                 addToast('Candidate added', 'success')
               }
