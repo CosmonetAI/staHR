@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useToast } from '../../../components/ToastProvider'
 import { CandidateService } from '../services/candidateService'
 import { JobService } from '../services/jobService'
+import ClientService from '../services/clientService'
 
 export default function JobsPage() {
   const navigate = useNavigate()
@@ -26,6 +27,48 @@ export default function JobsPage() {
       }
     })()
     return () => { mounted = false }
+  }, [])
+  const [clients, setClients] = useState<any[]>([])
+  const [search, setSearch] = useState('')
+  const [clientFilter, setClientFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('All')
+  const [postedStart, setPostedStart] = useState('')
+  const [postedEnd, setPostedEnd] = useState('')
+  const [openFilter, setOpenFilter] = useState<string | null>(null)
+
+  const clientsMap = React.useMemo(() => {
+    const m: Record<string,string> = {}
+    clients.forEach((c: any) => { if (c && c.id) m[String(c.id)] = c.name })
+    return m
+  }, [clients])
+
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const list = await ClientService.list()
+        if (!mounted) return
+        setClients(list || [])
+      } catch (e) {
+        // ignore
+      }
+    })()
+    return () => { mounted = false }
+  }, [])
+
+  // Close open filter menus when clicking outside
+  React.useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      try {
+        const target = e.target as HTMLElement | null
+        if (!target) return
+        if (!target.closest('.filter-menu')) setOpenFilter(null)
+      } catch (err) {
+        // ignore
+      }
+    }
+    document.addEventListener('click', onDocClick)
+    return () => document.removeEventListener('click', onDocClick)
   }, [])
   const [selectedJob, setSelectedJob] = useState<any | null>(null)
   const [newJob, setNewJob] = useState<any | null>(null)
@@ -112,6 +155,36 @@ export default function JobsPage() {
 
   
 
+  const filteredJobs = useMemo(() => {
+    const q = String(search || '').trim().toLowerCase()
+    return (jobs || []).filter((j: any) => {
+      if (statusFilter && statusFilter !== 'All') {
+        if ((j.status || 'Open') !== statusFilter) return false
+      }
+      if (clientFilter) {
+        const cid = String(j.client_id || j.client_name || '')
+        if (cid !== String(clientFilter)) return false
+      }
+      // posted date range filter (inclusive)
+      if (postedStart || postedEnd) {
+        const posted = j.posted || j.posted_date || ''
+        const postedTs = isNaN(Date.parse(String(posted))) ? NaN : Date.parse(String(posted))
+        if (postedStart) {
+          const startTs = Date.parse(String(postedStart))
+          if (isNaN(postedTs) || postedTs < startTs) return false
+        }
+        if (postedEnd) {
+          const endTs = Date.parse(String(postedEnd))
+          // include entire end day
+          if (isNaN(postedTs) || postedTs > (endTs + 24 * 60 * 60 * 1000 - 1)) return false
+        }
+      }
+      if (!q) return true
+      const txt = `${j.title || ''} ${j.location || ''} ${clientsMap[String(j.client_id || j.client_name || '')] || j.client_name || ''}`.toLowerCase()
+      return txt.includes(q)
+    })
+  }, [jobs, search, clientFilter, statusFilter, clientsMap, postedStart, postedEnd])
+
   return (
     <div className="container">
       <div className="jobs-page-head">
@@ -119,9 +192,54 @@ export default function JobsPage() {
         <button className="btn btn-primary" onClick={openNewJob}>+ Add Job</button>
       </div>
 
+      <div className="toolbar candidates-toolbar" style={{ marginTop: 12, marginBottom: 12 }}>
+        <div className="search-box">
+          <span>🔍</span>
+          <input placeholder="Search jobs, location, client..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+
+        <div className="filter-menu">
+          <select className="filter-summary" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
+            <option value="">All clients</option>
+            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+
+        <div className="filter-menu">
+          <select className="filter-summary" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="All">All</option>
+            <option value="Open">Open</option>
+            <option value="Closed">Closed</option>
+          </select>
+        </div>
+
+        <div className={`filter-menu ${openFilter === 'posted' ? 'open' : ''}`}>
+          <button type="button" className="filter-summary" onClick={() => setOpenFilter(openFilter === 'posted' ? null : 'posted')}>
+            {postedStart || postedEnd ? `Posted: ${postedStart || '—'} → ${postedEnd || '—'}` : 'Posted'}
+          </button>
+          {openFilter === 'posted' && (
+            <div className="filter-menu-panel posted">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <label className="filter-check" style={{ alignItems: 'flex-start' }}>
+                  <div style={{ fontSize: 12, marginBottom: 4 }}>Start</div>
+                  <input type="date" value={postedStart} onChange={(e) => setPostedStart(e.target.value)} />
+                </label>
+                <label className="filter-check" style={{ alignItems: 'flex-start' }}>
+                  <div style={{ fontSize: 12, marginBottom: 4 }}>End</div>
+                  <input type="date" value={postedEnd} onChange={(e) => setPostedEnd(e.target.value)} />
+                </label>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button className="btn btn-ghost" onClick={() => { setPostedStart(''); setPostedEnd(''); setOpenFilter(null); }}>Clear</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="jobs-grid">
         {loadingJobs && <div className="card">Loading jobs…</div>}
-        {jobs.map(job => {
+        {filteredJobs.map(job => {
           const apps = applicationCount(job)
 
           return (
@@ -129,7 +247,7 @@ export default function JobsPage() {
               <div className="job-card-head">
                 <div className="job-title-block">
                   <button className="job-title" onClick={() => openDetails(job)}>{job.title}</button>
-                  <div className="job-meta">{job.location} • JOB ID: {String(job.job_id || job.job_ref || job.id || '')} • Posted {job.posted}</div>
+                  <div className="job-meta">{job.location} {job.client_id || job.client_name ? '• ' : ''}{clientsMap[String(job.client_id || job.client_name || '')] || job.client_name || ''}{(job.client_id || job.client_name) ? ' • ' : ''}JOB ID: {String(job.job_id || job.job_ref || job.id || '')} • Posted {job.posted}</div>
                 </div>
                 <div className={`badge ${job.status === 'Open' ? 'progress' : 'dropped'}`}>{job.status}</div>
               </div>
@@ -171,6 +289,7 @@ export default function JobsPage() {
                 <h2>{selectedJob.title}</h2>
                 <div className="sub" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                   <span>City: {selectedJob.city || selectedJob.location || '-'}</span>
+                  <span>Client: {clientsMap[String(selectedJob.client_id || selectedJob.client_name || '')] || selectedJob.client_name || '-'}</span>
                   <span>Posted date: {selectedJob.posted || '-'}</span>
                   <span>JOB ID: {String(selectedJob.job_id || selectedJob.job_ref || selectedJob.id || '')}</span>
                   {selectedJob.status === 'Closed' && (
@@ -268,6 +387,17 @@ export default function JobsPage() {
                 <div className="field">
                   <label>Department</label>
                   <input placeholder="e.g. Engineering" value={newJob.department || ''} onChange={(e) => setNewJob({ ...newJob, department: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label>Client</label>
+                  <select value={newJob.client_id || ''} onChange={(e) => {
+                    const id = e.target.value
+                    const c = clients.find(x => String(x.id) === id)
+                    setNewJob({ ...newJob, client_id: id, client_name: c ? c.name : '' })
+                  }}>
+                    <option value="">— none —</option>
+                    {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
                 </div>
               </div>
               <div className="field-row">

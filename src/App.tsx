@@ -5,6 +5,7 @@ import RecruitmentDashboard from './modules/recruitment/pages/RecruitmentDashboa
 import Candidates from './modules/recruitment/pages/Candidates'
 import Upload from './modules/recruitment/pages/Upload'
 import JobsPage from './modules/recruitment/pages/JobsPage'
+import ClientsPage from './modules/recruitment/pages/Clients'
 import Layout from './components/Layout'
 import { AuthProvider, useAuth } from './hooks/useAuth'
 
@@ -56,6 +57,16 @@ export default function App() {
             <Protected>
               <Layout>
                 <JobsPage />
+              </Layout>
+            </Protected>
+          }
+        />
+        <Route
+          path="/recruitment/clients"
+          element={
+            <Protected>
+              <Layout>
+                <ClientsPage />
               </Layout>
             </Protected>
           }

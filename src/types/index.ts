@@ -50,6 +50,8 @@ export type Job = {
   posted?: string
   status?: 'Open' | 'Closed' | string
   desc?: string
+  client_id?: string
+  client_name?: string
 }
 
 export type NoticePeriodOption = 'Immediate' | '15 Days' | '30 Days' | '60 Days' | '90 Days'

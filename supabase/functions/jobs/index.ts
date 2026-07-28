@@ -146,6 +146,7 @@ serve(async (req) => {
           title: j.title,
           openings: j.openings || 1,
           location: j.location || null,
+          client_id: j.client_id || null,
           posted: j.posted || null,
           status: j.status || 'Open',
           description: j.desc || j.description || null,
@@ -178,6 +179,7 @@ serve(async (req) => {
 
         const allowed = {
           title: updates.title,
+          client_id: updates.client_id,
           openings: updates.openings,
           location: updates.location,
           posted: updates.posted,
