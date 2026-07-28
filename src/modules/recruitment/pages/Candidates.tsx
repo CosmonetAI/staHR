@@ -7,6 +7,7 @@ import FileUpload from '../../../components/FileUpload'
 import CandidateForm from '../components/CandidateForm'
 import { useToast } from '../../../components/ToastProvider'
 import { parseCSVFile } from '../../../utils/csvUtils'
+import CANDIDATE_HEADERS, { CANDIDATE_HEADER_LABELS } from '../../../utils/headers'
 import {
   FaBriefcase,
   FaCalendarAlt,
@@ -21,6 +22,7 @@ import {
   FaTrashAlt,
   FaUserCheck
 } from 'react-icons/fa'
+import * as XLSX from 'xlsx'
 import { JobService } from '../services/jobService'
 
 export default function Candidates() {
@@ -108,7 +110,7 @@ export default function Candidates() {
           }
         }
         setEditingId(null)
-        setForm({ role: title || '', name: '', date: new Date().toISOString().slice(0, 10), exp: '', cctc: '', ectc: '', email: '', phone: '', linkedin: '', location: '', np: '', availability: '', intstatus: '', selstatus: 'progress', remarks: '', f2f: '', applied_job_id: resolvedJobId || jobRef || '', applied_job_title: title || '' })
+        setForm({ role: title || '', name: '', date: new Date().toISOString().slice(0, 10), exp: '', cctc: '', ectc: '', email: '', phone: '', linkedin: '', location: '', np: '', availability: '', intstatus: '', selstatus: 'progress', remarks: '', f2f: '', applied_job_id: resolvedJobId || jobRef || '', job_id: resolvedJobId || jobRef || '' })
         setDrawerOpen(true)
       })()
     }
@@ -142,31 +144,33 @@ export default function Candidates() {
       const visibleRows = filteredRows
       const toExport = selectedIds.length ? rows.filter(r => selectedIds.includes(r.id)) : visibleRows
       if (!toExport.length) { addToast('No rows to export', 'info'); return }
-      // Use headers that match the upload/import expected column names
-      const colsDef = [
-        { k: 'name', h: 'name', v: (r: any) => r.name || '' },
-        { k: 'email', h: 'email', v: (r: any) => r.email || '' },
-        { k: 'phone', h: 'phone', v: (r: any) => r.phone || '' },
-        { k: 'experience', h: 'experience', v: (r: any) => (r.exp || r.experience || '') },
-        { k: 'current_ctc', h: 'current_ctc', v: (r: any) => (r.cctc || r.current_ctc || '') },
-        { k: 'expected_ctc', h: 'expected_ctc', v: (r: any) => (r.ectc || r.expected_ctc || '') },
-        { k: 'current_location', h: 'current_location', v: (r: any) => (r.location || r.current_location || '') },
-        { k: 'notice_period', h: 'notice_period', v: (r: any) => (r.np || r.notice_period || '') },
-        { k: 'date', h: 'date', v: (r: any) => (r.date || '') },
-        { k: 'role', h: 'role', v: (r: any) => (r.role || r.job_role || '') },
-        { k: 'selstatus', h: 'selstatus', v: (r: any) => (r.selstatus || '') },
-        { k: 'intstatus', h: 'intstatus', v: (r: any) => (r.intstatus || '') },
-        { k: 'remarks', h: 'remarks', v: (r: any) => (r.remarks || '') },
-        { k: 'linkedin', h: 'linkedin', v: (r: any) => (r.linkedin || '') },
-        { k: 'applied_job_title', h: 'applied_job_title', v: (r: any) => (r.applied_job_title || r.job_title || '') },
-        { k: 'f2f', h: 'f2f', v: (r: any) => (r.f2f || '') }
-      ]
+      // Use canonical headers so exports match imports/samples
+      const colsDef = CANDIDATE_HEADERS.map((h) => {
+        return {
+          k: h,
+          h,
+          v: (r: any) => {
+            if (h === 'experience') return (r.exp || r.experience || '')
+            if (h === 'current_ctc') return (r.cctc || r.current_ctc || '')
+            if (h === 'expected_ctc') return (r.ectc || r.expected_ctc || '')
+            if (h === 'current_location') return (r.location || r.current_location || '')
+            if (h === 'notice_period') return (r.np || r.notice_period || '')
+            if (h === 'role') return (r.role || r.job_role || '')
+            if (h === 'job_id') return (r.job_id || r.applied_job_id || r.job_ref || '')
+            return (r[h] ?? '')
+          }
+        }
+      })
       const esc = (v: any) => {
         if (v === null || typeof v === 'undefined') return ''
         const s = String(v).replace(/"/g, '""')
         return `"${s}"`
       }
-      const header = colsDef.map(c => esc(c.h)).join(',')
+      const header = colsDef.map(c => {
+        const idx = CANDIDATE_HEADERS.indexOf(c.k)
+        const label = idx >= 0 ? CANDIDATE_HEADER_LABELS[idx] : c.h
+        return esc(label)
+      }).join(',')
       const rowsCsv = toExport.map(r => colsDef.map(c => esc((c.v ? c.v(r) : r[c.k]))).join(','))
       const csv = [header].concat(rowsCsv).join('\n')
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -184,13 +188,78 @@ export default function Candidates() {
     }
   }
 
+  function downloadSampleCSV() {
+    try {
+      const cols = CANDIDATE_HEADERS
+      const sampleRows = [
+        {
+          name: 'Alice Doe', email: 'alice@example.com', phone: '9876543210', experience: '3', current_company: '', current_location: 'Bengaluru', preferred_location: '', skills: '', notice_period: '30', current_ctc: '8', expected_ctc: '12', date: new Date().toISOString().slice(0,10), role: 'Frontend Engineer', selstatus: 'progress', intstatus: 'Phone screen', availability: '', remarks: 'Strong React skills', linkedin: 'https://linkedin.com/in/alice', job_id: 'job-1', f2f: ''
+        },
+        {
+          name: 'Bob Kumar', email: 'bob@example.com', phone: '9123456780', experience: '5', current_company: '', current_location: 'Mumbai', preferred_location: '', skills: '', notice_period: '15', current_ctc: '15', expected_ctc: '20', date: new Date().toISOString().slice(0,10), role: 'Backend Engineer', selstatus: 'progress', intstatus: 'Interview round 1', availability: '', remarks: '', linkedin: '', job_id: 'job-2', f2f: ''
+        }
+      ]
+
+      const esc = (v:any) => {
+        if (v === null || typeof v === 'undefined') return ''
+        const s = String(v).replace(/"/g, '""')
+        return `"${s}"`
+      }
+      const header = cols.map((c, i) => esc(CANDIDATE_HEADER_LABELS[i] || c)).join(',')
+      const rowsCsv = sampleRows.map(r => cols.map(k => esc((r as any)[k])).join(','))
+      const csv = [header].concat(rowsCsv).join('\n')
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `candidates_sample_${new Date().toISOString().slice(0,10)}.csv`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      addToast('Sample CSV downloaded', 'success')
+    } catch (e) {
+      addToast('Download failed', 'error')
+    }
+  }
+
+  function downloadSampleExcel() {
+    try {
+      const sampleRows = [
+        { name: 'Alice Doe', email: 'alice@example.com', phone: '9876543210', experience: 3, current_company: '', current_location: 'Bengaluru', preferred_location: '', skills: '', notice_period: '30', current_ctc: 8, expected_ctc: 12, date: new Date().toISOString().slice(0,10), role: 'Frontend Engineer', selstatus: 'progress', intstatus: 'Phone screen', availability: '', remarks: 'Strong React skills', linkedin: 'https://linkedin.com/in/alice', job_id: 'job-1', f2f: '' },
+        { name: 'Bob Kumar', email: 'bob@example.com', phone: '9123456780', experience: 5, current_company: '', current_location: 'Mumbai', preferred_location: '', skills: '', notice_period: '15', current_ctc: 15, expected_ctc: 20, date: new Date().toISOString().slice(0,10), role: 'Backend Engineer', selstatus: 'progress', intstatus: 'Interview round 1', availability: '', remarks: '', linkedin: '', job_id: 'job-2', f2f: '' }
+      ]
+      const aoa = []
+      aoa.push(CANDIDATE_HEADER_LABELS)
+      sampleRows.forEach((r) => {
+        aoa.push(CANDIDATE_HEADERS.map(h => (r as any)[h] ?? ''))
+      })
+      const ws = XLSX.utils.aoa_to_sheet(aoa)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'candidates')
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+      const blob = new Blob([wbout], { type: 'application/octet-stream' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `candidates_sample_${new Date().toISOString().slice(0,10)}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      addToast('Sample Excel downloaded', 'success')
+    } catch (e) {
+      addToast('Download failed', 'error')
+    }
+  }
+
   const filteredRows = useMemo(() => {
     let tmp = rows.slice()
     if (selectedRoles.length) tmp = tmp.filter(r => selectedRoles.includes((r.role || 'Unassigned').toString()))
     if (search) {
       const s = String(search).toLowerCase()
       tmp = tmp.filter((d: any) => {
-        const base = String((d.name || '') + ' ' + (d.email || '') + ' ' + (d.location || '') + ' ' + (d.applied_job_id || '') + ' ' + (d.applied_job_title || '') + ' ' + (d.job_id || '') + ' ' + (d.job_ref || '')).toLowerCase()
+        const base = String((d.name || '') + ' ' + (d.email || '') + ' ' + (d.location || '') + ' ' + (d.applied_job_id || d.job_id || '') + ' ' + (d.job_id || '') + ' ' + (d.job_ref || '')).toLowerCase()
         // If applied_job_id references a job record, include that job's friendly ids/titles in the search
         let jobExtras = ''
         try {
@@ -438,6 +507,8 @@ export default function Candidates() {
             <h3>{candidateListTitle} ({filteredRows.length})</h3>
             <div className="candidates-card-actions">
               <button className="btn btn-ghost" onClick={exportCSV}>Export CSV</button>
+              <button className="btn btn-ghost" onClick={downloadSampleCSV}>Download sample CSV</button>
+              <button className="btn btn-ghost" onClick={downloadSampleExcel}>Download sample Excel</button>
               <button className="btn btn-ghost" onClick={() => setShowUpload(true)}>Upload CSV/Excel</button>
               <button className="btn btn-primary" onClick={() => {
                 setEditingId(null)
