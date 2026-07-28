@@ -96,6 +96,26 @@ select.filter{min-width:170px;border:1px solid var(--line-strong);background-col
 .filter-menu-panel{position:absolute;top:48px;left:0;z-index:220;min-width:210px;background:var(--paper-raised);border:1px solid var(--line);border-radius:8px;box-shadow:0 16px 36px rgba(15,23,42,0.16);padding:6px}
 .filter-check{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:6px;font-size:13px;white-space:nowrap;cursor:pointer}
 .filter-check:hover{background:#f1f5f9}
+
+/* Posted date filter styling */
+.filter-menu-panel.posted { min-width:260px; padding:12px; }
+.filter-menu-panel:before{content:"";position:absolute;top:-8px;left:24px;width:12px;height:12px;background:var(--paper-raised);border-left:1px solid var(--line);border-top:1px solid var(--line);transform:rotate(45deg)}
+.filter-menu-panel .filter-check{align-items:flex-start;white-space:normal;padding:6px 8px}
+.filter-menu-panel label{font-size:12px;color:var(--ink-soft);margin-bottom:6px}
+.filter-menu-panel input[type="date"]{width:100%;border:1px solid var(--line-strong);border-radius:6px;padding:8px 10px;background:var(--white);font-size:13px}
+.filter-menu-panel .actions{display:flex;justify-content:flex-end;margin-top:8px}
+.filter-menu-panel .btn{height:36px;padding:8px 12px}
+.filter-menu-panel .btn-ghost{background:transparent;border:1px solid var(--line-strong)}
+
+/* Prevent filter panels from overflowing the viewport */
+.filter-menu-panel{box-sizing:border-box;max-width:calc(100vw - 32px);overflow:auto}
+.filter-menu-panel.posted{min-width:220px}
+
+/* For narrow viewports, make the panel fixed and full-width within padding */
+@media (max-width:640px){
+  .filter-menu-panel{position:fixed;left:16px;right:16px;top:80px;max-width:calc(100vw - 32px);border-radius:10px}
+  .filter-menu-panel:before{left:32px}
+}
 .candidates-card{padding:16px 18px 18px}
 .candidates-card:hover{transform:none;box-shadow:0 1px 3px var(--shadow-card-color)}
 .candidates-card-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}

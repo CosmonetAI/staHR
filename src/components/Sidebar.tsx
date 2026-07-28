@@ -22,6 +22,7 @@ export default function Sidebar() {
             <div className="sidebar-subnav">
               <NavLink className={navClass} to="/recruitment" end>Dashboard</NavLink>
               <NavLink className={navClass} to="/candidates">Candidates</NavLink>
+              <NavLink className={navClass} to="/recruitment/clients">Clients</NavLink>
               <NavLink className={navClass} to="/recruitment/jobs">Jobs</NavLink>
             </div>
           )}
