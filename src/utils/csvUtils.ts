@@ -46,6 +46,58 @@ function parseNumber(v: unknown) {
   return match ? Number(match[0]) : undefined
 }
 
+function parseDateString(v: unknown) {
+  const s = blankToUndefined(v)
+  if (!s) return undefined
+  // handle Date objects
+  if (v instanceof Date && !Number.isNaN(v.getTime())) {
+    const y = v.getFullYear()
+    const mm = String(v.getMonth() + 1).padStart(2, '0')
+    const dd = String(v.getDate()).padStart(2, '0')
+    return `${y}-${mm}-${dd}`
+  }
+  if (typeof s !== 'string') return undefined
+  const trimmed = s.trim()
+  // Excel may render ####### for overflow/masked dates — treat as empty
+  if (/^#+$/.test(trimmed)) return undefined
+  // already ISO yyyy-mm-dd
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed
+  // dd-mm-yyyy or d-m-yyyy or dd/mm/yyyy
+  let m = trimmed.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/)
+  if (m) {
+    const d = Number(m[1])
+    const mo = Number(m[2])
+    const y = Number(m[3])
+    if (y >= 1900 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+      const mm = String(mo).padStart(2, '0')
+      const dd = String(d).padStart(2, '0')
+      return `${y}-${mm}-${dd}`
+    }
+  }
+  // mm/dd/yyyy
+  m = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (m) {
+    const mo = Number(m[1])
+    const d = Number(m[2])
+    const y = Number(m[3])
+    if (y >= 1900 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+      const mm = String(mo).padStart(2, '0')
+      const dd = String(d).padStart(2, '0')
+      return `${y}-${mm}-${dd}`
+    }
+  }
+  // try Date.parse fallback
+  const parsed = Date.parse(trimmed)
+  if (!Number.isNaN(parsed)) {
+    const dt = new Date(parsed)
+    const y = dt.getFullYear()
+    const mm = String(dt.getMonth() + 1).padStart(2, '0')
+    const dd = String(dt.getDate()).padStart(2, '0')
+    return `${y}-${mm}-${dd}`
+  }
+  return undefined
+}
+
 function normalizeSelectionStatus(v: unknown) {
   const s = String(v ?? '').trim().toLowerCase()
   if (!s) return 'progress'
@@ -95,6 +147,13 @@ function normalizeRow(raw: Record<string, any>) {
 
   normalized.role = firstValue(normalized, ['role', 'job_role', 'position'])
   normalized.date = firstValue(normalized, ['date', 'date_of_submission', 'submission_date'])
+  // normalize date strings to ISO yyyy-mm-dd to avoid DB errors
+  try {
+    const parsedDate = parseDateString(normalized.date)
+    if (parsedDate) normalized.date = parsedDate
+  } catch (e) {
+    // ignore and keep original value
+  }
   normalized.linkedin = firstValue(normalized, ['linkedin', 'linkedin_profile', 'linkedin_url'])
   normalized.availability = firstValue(normalized, ['availability', 'interview_availability'])
   normalized.intstatus = firstValue(normalized, ['intstatus', 'interview_status'])
@@ -134,7 +193,9 @@ function buildCandidate(normalized: Record<string, any>, fileName: string, sheet
       intstatus: normalized.intstatus || '',
       selstatus: normalized.selstatus || 'progress',
       remarks: normalized.remarks || '',
-      f2f: normalized.f2f || ''
+      f2f: normalized.f2f || '',
+      applied_job_id: normalized.applied_job_id || normalized.job_id || normalized.job_ref || '',
+      applied_job_title: normalized.applied_job_title || normalized.job_title || normalized.job_role || normalized.role || ''
     }
   } catch {
     return {
@@ -163,7 +224,9 @@ function buildCandidate(normalized: Record<string, any>, fileName: string, sheet
       intstatus: normalized.intstatus || '',
       selstatus: normalized.selstatus || 'progress',
       remarks: normalized.remarks || '',
-      f2f: normalized.f2f || ''
+      f2f: normalized.f2f || '',
+      applied_job_id: normalized.applied_job_id || normalized.job_id || normalized.job_ref || '',
+      applied_job_title: normalized.applied_job_title || normalized.job_title || normalized.job_role || normalized.role || ''
     }
   }
 }
