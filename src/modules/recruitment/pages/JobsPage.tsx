@@ -4,9 +4,11 @@ import { useQuery } from '@tanstack/react-query'
 import { useToast } from '../../../components/ToastProvider'
 import { CandidateService } from '../services/candidateService'
 import { JobService } from '../services/jobService'
+import { useAuth } from '../../../hooks/useAuth'
 import ClientService from '../services/clientService'
 
 export default function JobsPage() {
+  const { user, isClient } = useAuth()
   const navigate = useNavigate()
   const { data: candidatesData } = useQuery(['candidates'], () => CandidateService.list(1, 1000))
   const [jobs, setJobs] = useState<any[]>([])
@@ -189,7 +191,7 @@ export default function JobsPage() {
     <div className="container">
       <div className="jobs-page-head">
         <h2>Jobs</h2>
-        <button className="btn btn-primary" onClick={openNewJob}>+ Add Job</button>
+        {!isClient && <button className="btn btn-primary" onClick={openNewJob}>+ Add Job</button>}
       </div>
 
       <div className="toolbar candidates-toolbar" style={{ marginTop: 12, marginBottom: 12 }}>
@@ -264,13 +266,17 @@ export default function JobsPage() {
               </div>
 
               <div className="job-actions">
-                {job.status !== 'Closed' && (
-                  <button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); navigate('/candidates?job_ref=' + encodeURIComponent(job.job_id || job.job_ref || job.id) + '&job_title=' + encodeURIComponent(job.title)) }}>Apply</button>
-                )}
+                {!isClient && job.status !== 'Closed' && (
+                    <button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); navigate('/candidates?job_ref=' + encodeURIComponent(job.job_id || job.job_ref || job.id) + '&job_title=' + encodeURIComponent(job.title)) }}>Apply</button>
+                  )}
                 <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); navigate('/candidates?role=' + encodeURIComponent(job.title)) }}>View candidates</button>
                 <button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); openDetails(job) }}>Details</button>
-                <button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); setNewJob({ ...job }) }}>Edit</button>
-                <button className="btn btn-danger" onClick={(e) => { e.stopPropagation(); deleteJob(job) }}>Delete</button>
+                {!isClient && (
+                  <>
+                    <button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); setNewJob({ ...job }) }}>Edit</button>
+                    <button className="btn btn-danger" onClick={(e) => { e.stopPropagation(); deleteJob(job) }}>Delete</button>
+                  </>
+                )}
               </div>
             </div>
           )
@@ -348,7 +354,7 @@ export default function JobsPage() {
               <div />
               <div>
                 <button className="btn btn-ghost" onClick={closeDetails}>Close</button>
-                {selectedJob.status !== 'Closed' ? (
+                {!isClient && selectedJob.status !== 'Closed' ? (
                   <button className="btn btn-primary" style={{ marginLeft: 8 }} onClick={() => { closeDetails(); navigate('/candidates?job_ref=' + encodeURIComponent(selectedJob.job_id || selectedJob.job_ref || selectedJob.id) + '&job_title=' + encodeURIComponent(selectedJob.title)) }}>Apply</button>
                 ) : null}
               </div>
