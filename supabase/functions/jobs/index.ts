@@ -3,15 +3,15 @@
 import { serve } from 'https://deno.land/std@0.203.0/http/server.ts'
 import { createClient } from 'npm:@supabase/supabase-js'
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || 'https://jovcgovzutszlmmsvynz.supabase.co'
-const SUPABASE_SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpvdmNnb3Z6dXRzemxtbXN2eW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2NjE2NDAsImV4cCI6MjEwMDIzNzY0MH0.GmzMC3SvmPzSgXP133_6_5EqVonPoFws6f6zBvnCz2Y'
+const SUPABASE_URL = Deno.env.get('PROJECT_SUPABASE_URL') || Deno.env.get('SUPABASE_URL') || Deno.env.get('VITE_SUPABASE_URL')
+const SUPABASE_ANON_KEY = Deno.env.get('PROJECT_SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('VITE_SUPABASE_ANON_KEY')
 
 let sb: any = null
 
 function getClient() {
   if (sb) return sb
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE) return null
-  sb = createClient(String(SUPABASE_URL), String(SUPABASE_SERVICE_ROLE))
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null
+  sb = createClient(String(SUPABASE_URL), String(SUPABASE_ANON_KEY))
   return sb
 }
 
@@ -29,7 +29,7 @@ serve(async (req) => {
   // ensure supabase client available at runtime
   const client = getClient()
   if (!client) {
-    return new Response(JSON.stringify({ error: 'Server misconfiguration: missing SUPABASE_URL or SUPABASE_SERVICE_ROLE' }), { status: 500, headers: corsHeaders })
+    return new Response(JSON.stringify({ error: 'Server misconfiguration: missing SUPABASE_URL or SUPABASE_ANON_KEY' }), { status: 500, headers: corsHeaders })
   }
 
   // use `client` as the supabase client in handlers
@@ -48,6 +48,40 @@ serve(async (req) => {
 
     // Helper: respond JSON
     const json = (data: any, status = 200) => new Response(JSON.stringify(data), { status, headers: corsHeaders })
+
+    // determine if requester is a client user (by auth token -> clients.user_id or by email)
+    let isClientUser = false
+    let requestClientId: string | null = null
+    try {
+      const authHeader = req.headers.get('authorization') || ''
+      const token = authHeader.replace(/^Bearer\s+/i, '') || null
+      if (token) {
+        try {
+          const userRes: any = await sb.auth.getUser(token)
+          const user = userRes?.data?.user || null
+          const userId = user?.id || null
+          const userEmail = user?.email || null
+          if (userId) {
+            const clientRow = await sb.from('clients').select('id').eq('user_id', userId).limit(1).maybeSingle()
+            if (!clientRow.error && clientRow.data) {
+              isClientUser = true
+              requestClientId = clientRow.data.id
+            }
+          }
+          if (!isClientUser && userEmail) {
+            const clientRow2 = await sb.from('clients').select('id').eq('email', userEmail).limit(1).maybeSingle()
+            if (!clientRow2.error && clientRow2.data) {
+              isClientUser = true
+              requestClientId = clientRow2.data.id
+            }
+          }
+        } catch (e) {
+          // ignore token parse errors
+        }
+      }
+    } catch (e) {
+      console.warn('failed to detect client user', e)
+    }
 
     // Routes:
     // GET /jobs -> list jobs
@@ -93,8 +127,24 @@ serve(async (req) => {
       }
 
       if (req.method === 'GET') {
+        // attempt to detect client user from Authorization header and map to client id
+        let clientId: string | null = null
+        try {
+          const authHeader = req.headers.get('authorization') || ''
+          const token = authHeader.replace(/^Bearer\s+/i, '') || null
+          if (token) {
+            const userRes: any = await sb.auth.getUser(token)
+            const userId = userRes?.data?.user?.id || null
+            if (userId) {
+              const clientRow = await sb.from('clients').select('id').eq('user_id', userId).limit(1).maybeSingle()
+              if (!clientRow.error && clientRow.data) clientId = clientRow.data.id
+            }
+          }
+        } catch (e) { console.warn('failed to resolve clientId for request', e) }
+
         if (jobId && !sub) {
-          const { data, error } = await sb.from('jobs').select('*').eq('id', jobId).single()
+          const q = sb.from('jobs').select('*').eq('id', jobId)
+          const { data, error } = await q.single()
           if (error) return json({ error: error.message || error }, 500)
           return json(data)
         }
@@ -110,12 +160,16 @@ serve(async (req) => {
         const perPage = Number(url.searchParams.get('perPage') || '50')
         const from = (page - 1) * perPage
         const to = from + perPage - 1
-        const { data, error, count } = await sb.from('jobs').select('*', { count: 'estimated' }).order('created_at', { ascending: false }).range(from, to)
+        let query = sb.from('jobs').select('*', { count: 'estimated' }).order('created_at', { ascending: false })
+        if (clientId) query = query.eq('client_id', clientId)
+        const { data, error, count } = await query.range(from, to)
         if (error) return json({ error: error.message || error }, 500)
         return json({ data, count })
       }
 
       if (req.method === 'POST') {
+        // clients are read-only: prevent create actions
+        if (isClientUser) return json({ error: 'Forbidden: clients have read-only access' }, 403)
         if (jobId && sub === 'apply') {
           // apply to jobId
           const application = body.application || body
@@ -168,6 +222,7 @@ serve(async (req) => {
       }
 
       if (req.method === 'PATCH' || req.method === 'PUT') {
+        if (isClientUser) return json({ error: 'Forbidden: clients have read-only access' }, 403)
         if (!jobId) return json({ error: 'Missing job id' }, 400)
         const updates = body.job || body
         const parseSkills = (v: any) => {
@@ -203,6 +258,7 @@ serve(async (req) => {
       }
 
       if (req.method === 'DELETE') {
+        if (isClientUser) return json({ error: 'Forbidden: clients have read-only access' }, 403)
         if (!jobId) return json({ error: 'Missing job id' }, 400)
         const { error } = await sb.from('jobs').delete().eq('id', jobId)
         if (error) return json({ error: error.message || error }, 500)
@@ -216,12 +272,22 @@ serve(async (req) => {
 
       if (req.method === 'GET') {
         if (!appId) return json({ error: 'Missing application id' }, 400)
-        const { data, error } = await sb.from('applications').select('*, candidates(*)').eq('id', appId).single()
+        const { data, error } = await sb.from('applications').select('*').eq('id', appId).single()
         if (error) return json({ error: error.message || error }, 500)
-        return json(data)
+        // if client user, ensure application belongs to one of their jobs
+        if (isClientUser) {
+          const job = await sb.from('jobs').select('client_id').eq('id', data.job_id).single()
+          if (job.error) return json({ error: job.error.message || job.error }, 500)
+          if (!job.data || job.data.client_id !== requestClientId) return json({ error: 'Forbidden' }, 403)
+        }
+        // include candidate details
+        const { data: appWithCandidate, error: appErr } = await sb.from('applications').select('*, candidates(*)').eq('id', appId).single()
+        if (appErr) return json({ error: appErr.message || appErr }, 500)
+        return json(appWithCandidate)
       }
 
       if (req.method === 'PATCH' || req.method === 'PUT') {
+        if (isClientUser) return json({ error: 'Forbidden: clients have read-only access' }, 403)
         if (!appId) return json({ error: 'Missing application id' }, 400)
         const updates = body.application || body
         const allowed = {
@@ -253,6 +319,7 @@ serve(async (req) => {
       }
 
       if (req.method === 'DELETE') {
+        if (isClientUser) return json({ error: 'Forbidden: clients have read-only access' }, 403)
         if (!appId) return json({ error: 'Missing application id' }, 400)
         const { error } = await sb.from('applications').delete().eq('id', appId)
         if (error) return json({ error: error.message || error }, 500)

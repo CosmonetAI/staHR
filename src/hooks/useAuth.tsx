@@ -4,7 +4,10 @@ import { supabase } from '../supabase/supabaseClient'
 type AuthContext = {
   user: any | null
   loading: boolean
+  isClient: boolean
+  client: any | null
   signIn: (email: string, password: string) => Promise<void>
+  signUp: (payload: { email: string; password: string; full_name?: string }) => Promise<any>
   signOut: () => Promise<void>
 }
 
@@ -12,27 +15,17 @@ const ctx = createContext<AuthContext>({
   user: null,
   loading: true,
   signIn: async () => {},
+  signUp: async () => {},
   signOut: async () => {}
 })
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isClient, setIsClient] = useState(false)
+  const [client, setClient] = useState<any | null>(null)
 
   useEffect(() => {
-    // Development shortcut: set VITE_DEV_SKIP_AUTH=true in .env to bypass Supabase auth
-    if (import.meta.env.VITE_DEV_SKIP_AUTH === 'true') {
-      setUser({ id: 'dev', email: import.meta.env.VITE_DEV_USER_EMAIL || 'dev@local' })
-      setLoading(false)
-      return
-    }
-
-    if (import.meta.env.VITE_ALLOW_DEV_LOGIN === 'true' && localStorage.getItem('stahr_dev_login') === 'true') {
-      setUser({ id: 'dev', email: import.meta.env.VITE_DEV_USER_EMAIL || 'dev@local' })
-      setLoading(false)
-      return
-    }
-
     let mounted = true
     supabase.auth.getSession().then(({ data }: any) => {
       if (!mounted) return
@@ -54,29 +47,82 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, [])
 
   const signIn = async (email: string, password: string) => {
-    // Local dev credential shortcut when enabled in .env
-    if (import.meta.env.VITE_ALLOW_DEV_LOGIN === 'true') {
-      const devEmail = String(import.meta.env.VITE_DEV_USER_EMAIL || 'dev@local')
-      const devPass = String(import.meta.env.VITE_DEV_USER_PASS || 'devpass')
-      if (email === devEmail && password === devPass) {
-        setUser({ id: 'dev', email })
-        localStorage.setItem('stahr_dev_login', 'true')
-        return
+    // Always use Supabase auth in signIn
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) throw error
+    // set user immediately from response when available
+    const signedUser = data?.user ?? data?.session?.user ?? null
+    if (signedUser) setUser(signedUser)
+  }
+
+  const signUp = async (payload: { email: string; password: string; full_name?: string }) => {
+    // Local dev shortcut
+    // Create auth user. Provide email redirect so confirmation returns to our app origin
+    const redirectTo = (typeof window !== 'undefined' && window.location && window.location.origin) ? `${window.location.origin}/` : undefined
+    const { data, error } = await supabase.auth.signUp({ email: payload.email, password: payload.password, options: { emailRedirectTo: redirectTo, data: { full_name: payload.full_name } } } as any)
+    if (error) throw error
+
+    // If a user id is returned, attempt to insert profile row into `profiles` table
+    const userId = data?.user?.id
+    if (userId) {
+      const profile = {
+        id: userId,
+        email: payload.email,
+        full_name: payload.full_name || null
       }
-      throw new Error('Invalid dev credentials')
+      try {
+        await supabase.from('profiles').insert(profile)
+      } catch (e) {
+        // non-fatal: continue even if profile insert fails
+        console.warn('Failed to insert profile', e)
+      }
     }
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) throw error
+    return data
   }
 
   const signOut = async () => {
-    localStorage.removeItem('stahr_dev_login')
     await supabase.auth.signOut()
     setUser(null)
+    setIsClient(false)
+    setClient(null)
   }
 
-  return <ctx.Provider value={{ user, loading, signIn, signOut }}>{children}</ctx.Provider>
+  // track whether current user corresponds to a client row (by email or by token)
+  React.useEffect(() => {
+    let mounted = true
+    const checkClient = async () => {
+      setIsClient(false)
+      setClient(null)
+      try {
+        if (!user || !user.email) return
+        const sess = await supabase.auth.getSession()
+        const token = sess?.data?.session?.access_token || ''
+        const FUNCTIONS_BASE = (import.meta.env.VITE_FUNCTIONS_BASE as string) || '/functions/v1'
+        const res = await fetch(`${FUNCTIONS_BASE.replace(/\/$/, '')}/clients?email=${encodeURIComponent(user.email)}`, {
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+        })
+        if (!mounted) return
+        if (!res.ok) return
+        const json = await res.json().catch(() => null)
+        // expect either { data: [...] } or single object
+        const data = json?.data || (Array.isArray(json) ? json : null)
+        if (data && Array.isArray(data) && data.length > 0 && data[0].email === user.email) {
+          setIsClient(true)
+          setClient(data[0])
+        } else if (json && json.email && json.email === user.email) {
+          setIsClient(true)
+          setClient(json)
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    checkClient()
+    return () => { mounted = false }
+  }, [user])
+
+  return <ctx.Provider value={{ user, loading, isClient, client, signIn, signUp, signOut }}>{children}</ctx.Provider>
 }
 
 export const useAuth = () => useContext(ctx)
