@@ -60,6 +60,15 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
     return ''
   })
 
+  const clearError = (field: string) => {
+  setErrors(prev => {
+    const newErrors = { ...prev };
+    delete newErrors[field];
+    return newErrors;
+  });
+};
+
+
   React.useEffect(() => {
     let mounted = true
     ;(async () => {
@@ -144,8 +153,10 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
 
   React.useEffect(() => {
     // Clear the temporary newRemark whenever the editing candidate changes
-    setNewRemark('')
+    setNewRemark(''); setErrors({});
   }, [editingId])
+
+  
 
   return (
     <>
@@ -153,9 +164,10 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
         <div className="field-row">
           <div className="field">
             <label>Candidate name *</label>
-            <input required value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Jordan Lee" />
+            <input required value={form.name || ''} onChange={(e) => {setForm({ ...form, name: e.target.value });clearError("name");}} placeholder="e.g. Jordan Lee" />
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           </div>
+           {errors.name && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{errors.name}</div>}
           </div>
           <div className="field">
             <label>Date of submission *</label>
@@ -164,14 +176,14 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
           </div>
         </div>
 
-            {errors.np && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{errors.np}</div>}
+            
         <div className="field-row">
           <div className="field">
               <label>Assign to job *</label>
               <select required value={selectedJobValue || ''} onChange={(e) => {
                 const selected = e.target.value
                 const j = jobs.find(x => String(x.job_id || x.job_ref || x.id) === String(selected))
-                if (j) setForm({ ...form, applied_job_id: String(selected), role: j.title || form.role, applied_job_title: j.title || form.applied_job_title })
+                if (j) {setForm({ ...form, applied_job_id: String(selected), role: j.title || form.role, applied_job_title: j.title || form.applied_job_title });clearError("applied_job_id");clearError("role");}
                 else setForm({ ...form, applied_job_id: '' })
               }}>
                 <option value="">— select job —</option>
@@ -218,7 +230,7 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
           </div>
           <div className="field">
             <label>Email *</label>
-            <input required value={form.email || ''} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="name@email.com" />
+            <input required value={form.email || ''} onChange={(e) => {setForm({ ...form, email: e.target.value });clearError("email");}} placeholder="name@email.com" />
             {errors.email && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{errors.email}</div>}
           </div>
           <div className="field">
@@ -248,6 +260,7 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
                 {NOTICE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
               </select>
             </div>
+            {errors.np && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{errors.np}</div>}
           </div>
         </div>
 
