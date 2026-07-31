@@ -4,15 +4,25 @@
 import { serve } from 'https://deno.land/std@0.203.0/http/server.ts'
 import { createClient } from 'npm:@supabase/supabase-js'
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || 'https://jovcgovzutszlmmsvynz.supabase.co'
-const SUPABASE_SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpvdmNnb3Z6dXRzemxtbXN2eW56Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NDY2MTY0MCwiZXhwIjoyMTAwMjM3NjQwfQ.6IqbA0zzeuCQjcf3Z_IhLjlOdnTABIgoNkhJY3ir4ys'
+const SUPABASE_URL = Deno.env.get('PROJECT_SUPABASE_URL') || Deno.env.get('SUPABASE_URL') || Deno.env.get('VITE_SUPABASE_URL')
+const SUPABASE_ANON_KEY = Deno.env.get('PROJECT_SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('VITE_SUPABASE_ANON_KEY')
+const SUPABASE_SERVICE_ROLE = Deno.env.get('PROJECT_SUPABASE_SERVICE_ROLE') || Deno.env.get('SUPABASE_SERVICE_ROLE') || Deno.env.get('VITE_SUPABASE_SERVICE_ROLE')
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE) {
-  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE environment variables')
-  throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE must be set')
+let sb: any = null
+let sbAdmin: any = null
+if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+  sb = createClient(String(SUPABASE_URL), String(SUPABASE_ANON_KEY))
+} else {
+  console.error('Missing SUPABASE_URL or SUPABASE_ANON_KEY environment variables')
 }
-
-const sb = createClient(String(SUPABASE_URL), String(SUPABASE_SERVICE_ROLE))
+if (SUPABASE_URL && SUPABASE_SERVICE_ROLE) {
+  try {
+    sbAdmin = createClient(String(SUPABASE_URL), String(SUPABASE_SERVICE_ROLE))
+  } catch (e) {
+    console.warn('Failed to create admin Supabase client', e)
+    sbAdmin = null
+  }
+}
 
 function normalizeSelectionStatus(value: any) {
   const s = String(value || '').trim().toLowerCase()
@@ -41,11 +51,47 @@ serve(async (req) => {
     return new Response(null, { status: 204, headers: corsHeaders })
   }
 
+  if (!sb) return new Response(JSON.stringify({ error: 'Server misconfiguration: missing SUPABASE_URL or SUPABASE_ANON_KEY' }), { status: 500, headers: corsHeaders })
+
     try {
     // Debug: log presence of auth headers (do not log the secret values)
     const hasApiKey = Boolean(req.headers.get('apikey') || req.headers.get('x-api-key') || req.headers.get('x-apikey'))
     const hasAuth = Boolean(req.headers.get('authorization'))
     console.log('auth header presence', { hasApiKey, hasAuth })
+
+    // determine if requester is a client user (by auth token -> clients.user_id or by email)
+    let isClientUser = false
+    let requestClientId: string | null = null
+    try {
+      const authHeader = req.headers.get('authorization') || ''
+      const token = authHeader.replace(/^Bearer\s+/i, '') || null
+      if (token) {
+        try {
+          const userRes: any = await sb.auth.getUser(token)
+          const user = userRes?.data?.user || null
+          const userId = user?.id || null
+          const userEmail = user?.email || null
+          if (userId) {
+            const clientRow = await sb.from('clients').select('id').eq('user_id', userId).limit(1).maybeSingle()
+            if (!clientRow.error && clientRow.data) {
+              isClientUser = true
+              requestClientId = clientRow.data.id
+            }
+          }
+          if (!isClientUser && userEmail) {
+            const clientRow2 = await sb.from('clients').select('id').eq('email', userEmail).limit(1).maybeSingle()
+            if (!clientRow2.error && clientRow2.data) {
+              isClientUser = true
+              requestClientId = clientRow2.data.id
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    } catch (e) {
+      console.warn('failed to detect client user', e)
+    }
 
     // handle GET - list or single
     if (req.method === 'GET') {
@@ -60,6 +106,31 @@ serve(async (req) => {
       }
       const from = (page - 1) * perPage
       const to = from + perPage - 1
+      // attempt to detect client user and restrict candidates to their jobs
+      let clientId: string | null = null
+      try {
+        const authHeader = req.headers.get('authorization') || ''
+        const token = authHeader.replace(/^Bearer\s+/i, '') || null
+        if (token) {
+          const userRes: any = await sb.auth.getUser(token)
+          const userId = userRes?.data?.user?.id || null
+          if (userId) {
+            const clientRow = await sb.from('clients').select('id').eq('user_id', userId).limit(1).maybeSingle()
+            if (!clientRow.error && clientRow.data) clientId = clientRow.data.id
+          }
+        }
+      } catch (e) { console.warn('failed to resolve clientId for candidates request', e) }
+
+      if (clientId) {
+        // find job ids for this client
+        const { data: jobsForClient } = await sb.from('jobs').select('id').eq('client_id', clientId)
+        const jobIds = (jobsForClient || []).map((j: any) => j.id)
+        const query = sb.from('candidates').select('*', { count: 'estimated' }).order('created_at', { ascending: false })
+        const { data, error, count } = jobIds.length ? await query.in('applied_job_id', jobIds).range(from, to) : await query.range(from, to)
+        if (error) return new Response(JSON.stringify({ error: error.message || error }), { status: 500, headers: corsHeaders })
+        return new Response(JSON.stringify({ data, count }), { status: 200, headers: corsHeaders })
+      }
+
       const { data, error, count } = await sb.from('candidates').select('*', { count: 'estimated' }).order('created_at', { ascending: false }).range(from, to)
       if (error) return new Response(JSON.stringify({ error: error.message || error }), { status: 500, headers: corsHeaders })
       return new Response(JSON.stringify({ data, count }), { status: 200, headers: corsHeaders })
@@ -77,12 +148,15 @@ serve(async (req) => {
 
     // POST - create (bulk or single). If body.upload & body.candidates -> treat as import with upload row
     if (req.method === 'POST') {
+      if (isClientUser) return new Response(JSON.stringify({ error: 'Forbidden: clients have read-only access' }), { status: 403, headers: corsHeaders })
       const upload = body.upload || {}
       const candidates = body.candidates || (body.candidate ? [body.candidate] : [])
       // create upload record (optional)
       let up: any = null
       if (upload && upload.file_name) {
-        const { data: upData, error: upErr } = await sb.from('uploads').insert([{ file_name: upload.file_name, total_records: upload.total_records, uploaded_by: upload.uploaded_by }]).select().single()
+        // prefer admin client for writes to avoid RLS blocking; fall back to regular client
+        const writer = sbAdmin || sb
+        const { data: upData, error: upErr } = await writer.from('uploads').insert([{ file_name: upload.file_name, total_records: upload.total_records, uploaded_by: upload.uploaded_by }]).select().single()
         if (upErr) {
           console.error('uploads insert error', upErr)
           return new Response(JSON.stringify({ error: 'Failed to create upload record', details: upErr.message || upErr }), { status: 500, headers: corsHeaders })
@@ -247,20 +321,22 @@ serve(async (req) => {
       })
 
       const candidatesWithUpload = candidates.map((c: any) => ({ ...allowed(c), ...(up ? { upload_id: up.id } : {}) }))
-      const { data: inserted, error: insErr } = await sb.from('candidates').insert(candidatesWithUpload).select()
+      // Use admin client for candidate inserts when available to avoid RLS failures.
+      const writerCandidates = sbAdmin || sb
+      const { data: inserted, error: insErr } = await writerCandidates.from('candidates').insert(candidatesWithUpload).select()
       if (insErr) {
         console.error('candidates insert error', insErr)
-        if (up) await sb.from('uploads').update({ status: 'failed', report: { error: insErr.message } }).eq('id', up.id)
+        if (up) await (sbAdmin || sb).from('uploads').update({ status: 'failed', report: { error: insErr.message } }).eq('id', up.id)
         return new Response(JSON.stringify({ error: 'Failed to insert candidates', details: insErr.message || insErr }), { status: 500, headers: corsHeaders })
       }
-
-      if (up) await sb.from('uploads').update({ status: 'succeeded', successful_records: inserted.length, failed_records: candidates.length - inserted.length }).eq('id', up.id)
+      if (up) await (sbAdmin || sb).from('uploads').update({ status: 'succeeded', successful_records: inserted.length, failed_records: candidates.length - inserted.length }).eq('id', up.id)
       console.log('import succeeded', { uploadId: up?.id, insertedCount: inserted.length })
       return new Response(JSON.stringify({ upload: up, inserted }), { status: 200, headers: corsHeaders })
     }
 
     // PUT/PATCH - update a candidate by id
     if (req.method === 'PUT' || req.method === 'PATCH') {
+      if (isClientUser) return new Response(JSON.stringify({ error: 'Forbidden: clients have read-only access' }), { status: 403, headers: corsHeaders })
       const id = body.id || body.candidate?.id
       const updates = body.updates || body.candidate || {}
       if (!id) return new Response(JSON.stringify({ error: 'Missing id for update' }), { status: 400, headers: corsHeaders })
@@ -294,17 +370,18 @@ serve(async (req) => {
         updates.applied_job_id = null
       }
 
-      const { data, error } = await sb.from('candidates').update(updates).eq('id', id).select().single()
+      const { data, error } = await (sbAdmin || sb).from('candidates').update(updates).eq('id', id).select().single()
       if (error) return new Response(JSON.stringify({ error: error.message || error }), { status: 500, headers: corsHeaders })
       return new Response(JSON.stringify({ updated: data }), { status: 200, headers: corsHeaders })
     }
 
     // DELETE - delete by id (from body or query param)
     if (req.method === 'DELETE') {
+      if (isClientUser) return new Response(JSON.stringify({ error: 'Forbidden: clients have read-only access' }), { status: 403, headers: corsHeaders })
       const u = new URL(req.url)
       const id = body.id || u.searchParams.get('id')
       if (!id) return new Response(JSON.stringify({ error: 'Missing id for delete' }), { status: 400, headers: corsHeaders })
-      const { error } = await sb.from('candidates').delete().eq('id', id)
+      const { error } = await (sbAdmin || sb).from('candidates').delete().eq('id', id)
       if (error) return new Response(JSON.stringify({ error: error.message || error }), { status: 500, headers: corsHeaders })
       return new Response(JSON.stringify({ deleted: true }), { status: 200, headers: corsHeaders })
     }

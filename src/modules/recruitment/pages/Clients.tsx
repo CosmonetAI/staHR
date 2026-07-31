@@ -1,8 +1,12 @@
 import React, { useEffect, useState } from 'react'
+import { useAuth } from '../../../hooks/useAuth'
 import ClientService from '../services/clientService'
 import { useToast } from '../../../components/ToastProvider'
 
 export default function ClientsPage() {
+  const { user, isClient } = useAuth()
+  // hide page for client users
+  if (isClient) return <div className="container"><div className="card">Not found</div></div>
   const [clients, setClients] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [editing, setEditing] = useState<any | null>(null)
@@ -29,6 +33,7 @@ export default function ClientsPage() {
     try {
       if (!editing) return
       if (!editing.name || !String(editing.name).trim()) { addToast('Name is required', 'error'); return }
+      if (!editing.email || !String(editing.email).trim()) { addToast('Email is required for onboarding', 'error'); return }
       if (editing.id) {
         const updated = await ClientService.update(String(editing.id), editing)
         setClients(prev => [updated, ...prev.filter(c => String(c.id) !== String(updated.id))])
@@ -36,7 +41,7 @@ export default function ClientsPage() {
       } else {
         const created = await ClientService.create(editing)
         setClients(prev => [created, ...prev])
-        addToast('Client created', 'success')
+        addToast('Client created and invitation sent', 'success')
       }
       close()
     } catch (e: any) {

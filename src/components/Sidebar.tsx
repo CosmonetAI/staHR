@@ -1,8 +1,10 @@
 import React, { useState } from 'react'
+import { useAuth } from '../hooks/useAuth'
 import { NavLink } from 'react-router-dom'
 
 export default function Sidebar() {
   const [recruitOpen, setRecruitOpen] = useState(true)
+  const { user, isClient } = useAuth()
   const navClass = ({ isActive }: { isActive: boolean }) => `sidebar-link${isActive ? ' active' : ''}`
 
   return (
@@ -22,7 +24,8 @@ export default function Sidebar() {
             <div className="sidebar-subnav">
               <NavLink className={navClass} to="/recruitment" end>Dashboard</NavLink>
               <NavLink className={navClass} to="/candidates">Candidates</NavLink>
-              <NavLink className={navClass} to="/recruitment/clients">Clients</NavLink>
+              {/* hide Clients nav for client users */}
+              {!isClient && <NavLink className={navClass} to="/recruitment/clients">Clients</NavLink>}
               <NavLink className={navClass} to="/recruitment/jobs">Jobs</NavLink>
             </div>
           )}

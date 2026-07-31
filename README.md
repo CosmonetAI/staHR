@@ -16,21 +16,13 @@ VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=public-anon-key
 ```
 
-Development shortcuts:
+Authentication
+
+Authentication uses Supabase. Configure the following environment variables in `.env`:
 
 ```
-# Auto-skip authentication and sign in a dummy user (useful for local UI work)
-VITE_DEV_SKIP_AUTH=true
-VITE_DEV_USER_EMAIL=dev@local
-```
-
-Local dev login (email/password):
-
-```
-# Enable a simple local login flow (no Supabase)
-VITE_ALLOW_DEV_LOGIN=true
-VITE_DEV_USER_EMAIL=dev@local
-VITE_DEV_USER_PASS=devpass
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=public-anon-key
 ```
 
 Features included in scaffold:

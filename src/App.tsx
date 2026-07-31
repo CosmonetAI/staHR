@@ -1,6 +1,8 @@
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
+import Signup from './pages/Signup'
+import ResetPassword from './pages/ResetPassword'
 import RecruitmentDashboard from './modules/recruitment/pages/RecruitmentDashboard'
 import Candidates from './modules/recruitment/pages/Candidates'
 import Upload from './modules/recruitment/pages/Upload'
@@ -21,6 +23,8 @@ export default function App() {
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/reset" element={<ResetPassword />} />
         <Route
           path="/recruitment"
           element={

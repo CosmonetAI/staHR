@@ -24,10 +24,12 @@ import {
 } from 'react-icons/fa'
 import * as XLSX from 'xlsx'
 import { JobService } from '../services/jobService'
+import { useAuth } from '../../../hooks/useAuth'
 
 export default function Candidates() {
+  const { user, isClient } = useAuth()
   const location = useLocation()
-  const { data, isLoading } = useQuery(['candidates'], () => CandidateService.list(1, 1000))
+  const { data, isLoading } = useQuery(['candidates'], () => CandidateService.list(1, 1000), { retry: false })
   
   const all = (data && data.data) ? data.data : []
   const [rows, setRows] = useState<any[]>(all)
@@ -507,14 +509,18 @@ export default function Candidates() {
             <h3>{candidateListTitle} ({filteredRows.length})</h3>
             <div className="candidates-card-actions">
               <button className="btn btn-ghost" onClick={exportCSV}>Export CSV</button>
-              <button className="btn btn-ghost" onClick={downloadSampleCSV}>Download sample CSV</button>
-              <button className="btn btn-ghost" onClick={downloadSampleExcel}>Download sample Excel</button>
-              <button className="btn btn-ghost" onClick={() => setShowUpload(true)}>Upload CSV/Excel</button>
-              <button className="btn btn-primary" onClick={() => {
-                setEditingId(null)
-                setForm({ role: '', name: '', date: new Date().toISOString().slice(0, 10), exp: '', cctc: '', ectc: '', email: '', phone: '', linkedin: '', location: '', np: '', availability: '', intstatus: '', selstatus: 'progress', remarks: '', f2f: '' })
-                setDrawerOpen(true)
-              }}>+ Add Candidate</button>
+              {!isClient && <button className="btn btn-ghost" onClick={downloadSampleCSV}>Download sample CSV</button>}
+              {!isClient && <button className="btn btn-ghost" onClick={downloadSampleExcel}>Download sample Excel</button>}
+              {!isClient && (
+                    <>
+                      <button className="btn btn-ghost" onClick={() => setShowUpload(true)}>Upload CSV/Excel</button>
+                      <button className="btn btn-primary" onClick={() => {
+                        setEditingId(null)
+                        setForm({ role: '', name: '', date: new Date().toISOString().slice(0, 10), exp: '', cctc: '', ectc: '', email: '', phone: '', linkedin: '', location: '', np: '', availability: '', intstatus: '', selstatus: 'progress', remarks: '', f2f: '' })
+                        setDrawerOpen(true)
+                      }}>+ Add Candidate</button>
+                    </>
+                  )}
             </div>
           </div>
           <div className="table-wrap">
@@ -538,7 +544,7 @@ export default function Candidates() {
                   <th>Location</th>
                   <th className="notice-col">Notice Period</th>
                   <th className="status-th">Status</th>
-                  <th className="actions-th">Actions</th>
+                  {!isClient && <th className="actions-th">Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -585,6 +591,7 @@ export default function Candidates() {
                             </div>
                           )}
                         </td>
+                        {!isClient && (
                         <td className="actions-cell" onClick={(e)=>e.stopPropagation()}>
                           <div className="row-actions" style={{ display: 'flex' }}>
                             <div className="icon-btn edit" title="Edit" onClick={() => { setEditingId(String(c.id)); setForm({ ...c }); setDrawerOpen(true) }}><FaPen /></div>
@@ -605,10 +612,11 @@ export default function Candidates() {
                             }}><FaTrashAlt /></div>
                           </div>
                         </td>
+                        )}
                       </tr>
                       {expandedId === c.id && (
                         <tr className="expanded-row">
-                          <td colSpan={8}>
+                          <td colSpan={isClient ? 7 : 8}>
                             <div className="candidate-profile-panel">
                               <div className="candidate-profile-head">
                                 <div className="candidate-profile-identity">
@@ -717,7 +725,7 @@ export default function Candidates() {
                   )
                 })}
                 {filteredRows.length === 0 && (
-                  <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24 }}>No candidates found</td></tr>
+                  <tr><td colSpan={isClient ? 7 : 8} style={{ textAlign: 'center', padding: 24 }}>No candidates found</td></tr>
                 )}
               </tbody>
             </table>
