@@ -10,6 +10,8 @@ const hasRecoveryParams = () => {
     const searchParams = new URLSearchParams(window.location.search || '')
     const hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''))
     return (
+      // explicit recovery query we may set when redirecting
+      searchParams.get('recovery') === '1' ||
       searchParams.get('type') === 'recovery' ||
       hashParams.get('type') === 'recovery' ||
       searchParams.has('code') ||

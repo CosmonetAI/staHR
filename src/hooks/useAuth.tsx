@@ -40,6 +40,36 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUser(session?.user ?? null)
       setLoading(false)
     })
+    // Detect recovery tokens in URL (query or hash) and restore session, then navigate to /reset
+    try {
+      if (typeof window !== 'undefined') {
+        const searchParams = new URLSearchParams(window.location.search || '')
+        const hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''))
+        const access_token = searchParams.get('access_token') || hashParams.get('access_token')
+        const refresh_token = searchParams.get('refresh_token') || hashParams.get('refresh_token')
+        const type = searchParams.get('type') || hashParams.get('type')
+        if (access_token) {
+          // attempt to set session
+          ;(async () => {
+            try {
+              await supabase.auth.setSession({ access_token, refresh_token } as any)
+              // replace URL to /reset?recovery=1 to ensure app shows reset page
+              const base = window.location.origin || ''
+              const newUrl = base + '/reset?recovery=1'
+              window.history.replaceState({}, '', newUrl)
+              // update user state quickly
+              const s = await supabase.auth.getSession()
+              setUser(s?.data?.session?.user ?? null)
+            } catch (e) {
+              // ignore failures here; ResetPassword will attempt fallback logic
+            }
+          })()
+        } else if (type === 'recovery') {
+          // ensure user is taken to /reset
+          try { const base = window.location.origin || ''; const newUrl = base + '/reset?recovery=1'; window.history.replaceState({}, '', newUrl) } catch (e) {}
+        }
+      }
+    } catch (e) {}
     return () => {
       mounted = false
       sub?.subscription.unsubscribe()
