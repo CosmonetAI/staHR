@@ -108,6 +108,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setClient(null)
   }
 
+  const resetPassword = async (email: string, captchaToken?: string) => {
+    const redirectTo = (typeof window !== 'undefined' && window.location && window.location.origin) ? `${window.location.origin}/reset` : undefined
+    const { error } = await supabase.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } as any : undefined as any)
+    return { error }
+  }
+
+  const updatePassword = async (password: string) => {
+    const { error } = await supabase.auth.updateUser({ password } as any)
+    return { error }
+  }
+
   // track whether current user corresponds to a client row (by email or by token)
   React.useEffect(() => {
     let mounted = true
@@ -142,7 +153,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return () => { mounted = false }
   }, [user])
 
-  return <ctx.Provider value={{ user, loading, isClient, client, signIn, signUp, signOut }}>{children}</ctx.Provider>
+  return <ctx.Provider value={{ user, loading, isClient, client, signIn, signUp, signOut, resetPassword, updatePassword }}>{children}</ctx.Provider>
 }
 
 export const useAuth = () => useContext(ctx)
