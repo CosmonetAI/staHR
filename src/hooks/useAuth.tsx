@@ -52,6 +52,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         console.debug('AuthProvider parsed tokens', { access_token: !!access_token, refresh_token: !!refresh_token, type })
         if (access_token) {
           // attempt to set session
+          try {
+            // mark recovery flow so other listeners can force the reset page
+            try { sessionStorage.setItem('supabase_recovery', '1') } catch (e) {}
+          } catch (e) {}
           ;(async () => {
             try {
               const setRes = await supabase.auth.setSession({ access_token, refresh_token } as any)
@@ -84,6 +88,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // note: the real listener is still registered above; additionally we attach a small debug listener
     const { data: dbgSub } = supabase.auth.onAuthStateChange((event, sess) => {
       console.debug('AuthProvider debug onAuthStateChange', { event, sess })
+      try {
+        const recovery = sessionStorage.getItem('supabase_recovery')
+        if (recovery && sess?.session) {
+          // Force the reset route when a recovery flow is pending
+          try {
+            const base = window.location.origin || ''
+            const newUrl = base + '/reset?recovery=1'
+            window.history.replaceState({}, '', newUrl)
+          } catch (e) {}
+          try { sessionStorage.removeItem('supabase_recovery') } catch (e) {}
+        }
+      } catch (e) {}
     })
     return () => {
       mounted = false

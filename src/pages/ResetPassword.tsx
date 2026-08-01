@@ -10,12 +10,9 @@ const hasRecoveryParams = () => {
     const searchParams = new URLSearchParams(window.location.search || '')
     const hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''))
     return (
-      // explicit recovery query we may set when redirecting
       searchParams.get('recovery') === '1' ||
       searchParams.get('type') === 'recovery' ||
       hashParams.get('type') === 'recovery' ||
-      searchParams.has('code') ||
-      hashParams.has('code') ||
       hashParams.has('access_token') ||
       hashParams.has('refresh_token')
     )
@@ -130,14 +127,23 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
           }
         }
 
-        // Fallback: if tokens are present in the hash, try to set the session directly
+        // Fallback: if tokens are present in the hash, try to set the session directly.
+        // If the hash was consumed earlier, we may have stashed it during pre-bootstrap in sessionStorage.
         try {
-          const hash = typeof window !== 'undefined' ? window.location.hash.replace(/^#/, '') : ''
+          let hash = typeof window !== 'undefined' ? window.location.hash.replace(/^#/, '') : ''
+          if (!hash && typeof window !== 'undefined') {
+            const stashed = sessionStorage.getItem('supabase_auth_hash')
+            if (stashed) {
+              console.debug('ResetPassword using stashed auth hash from sessionStorage')
+              hash = stashed
+              try { sessionStorage.removeItem('supabase_auth_hash') } catch (e) {}
+            }
+          }
           const hashParams = new URLSearchParams(hash)
           const access_token = hashParams.get('access_token')
           const refresh_token = hashParams.get('refresh_token')
           if (access_token) {
-            console.debug('ResetPassword attempting setSession from hash', { access_token: !!access_token, refresh_token: !!refresh_token })
+            console.debug('ResetPassword attempting setSession from hash/fallback', { access_token: !!access_token, refresh_token: !!refresh_token })
             const setRes = await supabase.auth.setSession({ access_token, refresh_token } as any).catch((e) => ({ error: e }))
             console.debug('ResetPassword setSession result', setRes)
             if (!(setRes as any).error) {
@@ -148,7 +154,7 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
             console.warn('ResetPassword setSession failed', setRes)
           }
         } catch (e) {
-          // ignore
+          console.error('ResetPassword hash fallback error', e)
         }
 
         // final fallback: ask supabase for current session
