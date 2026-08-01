@@ -3,6 +3,24 @@ import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 import { supabase } from '../supabase/supabaseClient'
+import { useAuth } from '../hooks/useAuth'
+
+const hasRecoveryParams = () => {
+  try {
+    const searchParams = new URLSearchParams(window.location.search || '')
+    const hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''))
+    return (
+      searchParams.get('type') === 'recovery' ||
+      hashParams.get('type') === 'recovery' ||
+      searchParams.has('code') ||
+      hashParams.has('code') ||
+      hashParams.has('access_token') ||
+      hashParams.has('refresh_token')
+    )
+  } catch (e) {
+    return false
+  }
+}
 
 const schema = z.object({ email: z.string().email() })
 type Form = z.infer<typeof schema>
@@ -80,7 +98,7 @@ export default function ResetPassword() {
 
 function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading }: any) {
   const { register, handleSubmit, formState: { errors } } = useForm<any>({ resolver: async (v: any) => ({ values: v, errors: {} }) })
-  const [isRecovery, setIsRecovery] = useState(false)
+  const [isRecovery, setIsRecovery] = useState(() => hasRecoveryParams())
   const [sessionExists, setSessionExists] = useState(false)
   const [newPwdLoading, setNewPwdLoading] = useState(false)
   const [newPwdError, setNewPwdError] = useState<string | null>(null)
@@ -93,12 +111,7 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
       const search = typeof window !== 'undefined' ? window.location.search : ''
       const hash = typeof window !== 'undefined' ? window.location.hash : ''
       console.log('ResetPassword load', { href, search, hash })
-      const params = new URLSearchParams(search)
-      const type = params.get('type')
-      const hasAccessToken = search.includes('access_token') || hash.includes('access_token')
-      if (type === 'recovery' || hasAccessToken) {
-        setIsRecovery(true)
-      }
+      if (hasRecoveryParams()) setIsRecovery(true)
     } catch (e) {}
 
     // Check if supabase client has created a session from URL (detectSessionInUrl=true)
@@ -145,6 +158,7 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
   }, [])
 
   const navigate = useNavigate()
+  const { updatePassword, session, signOut } = useAuth()
 
   const handleNewPassword = async (vals: any) => {
     setNewPwdError(null)
@@ -152,11 +166,14 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
     setNewPwdLoading(true)
     try {
       if (!vals.password || vals.password.length < 6) throw new Error('Password must be at least 6 characters')
-      const { data, error } = await supabase.auth.updateUser({ password: vals.password } as any)
+      const { error } = await updatePassword(vals.password)
       if (error) throw error
       setNewPwdMsg('Password updated successfully. You can now sign in.')
-      // navigate to login after short delay
-      setTimeout(() => {
+      // Sign out and navigate to login after short delay
+      setTimeout(async () => {
+        try {
+          await signOut()
+        } catch (_) {}
         navigate('/login')
       }, 1200)
     } catch (err: any) {
@@ -170,8 +187,11 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
     // Show form to set new password (requires session created by Supabase on redirect)
     return (
       <div>
+        <div style={{ marginBottom: 8, padding: 8, background: '#fff7ed', border: '1px solid #ffedd5', borderRadius: 6 }}>
+          <strong>Recovery mode:</strong> This page is handling a password recovery callback.
+        </div>
         <div style={{ marginBottom: 12 }}>Set a new password for your account.</div>
-        {!sessionExists && <div style={{ marginBottom: 12 }} className="field-error">Unable to detect a recovery session. Make sure you clicked the link from your email and the redirect URL matches this app.</div>}
+        {!sessionExists && !session && <div style={{ marginBottom: 12 }} className="field-error">Unable to detect a recovery session. Make sure you clicked the link from your email and the redirect URL matches this app. You may still set a password but it may fail if the session is missing.</div>}
         <form onSubmit={handleSubmit(handleNewPassword)} className="login-form" noValidate>
           <div className="field" style={{ marginBottom: 12 }}>
             <label className="field-label">New password</label>
