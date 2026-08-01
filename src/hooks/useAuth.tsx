@@ -43,24 +43,29 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // Detect recovery tokens in URL (query or hash) and restore session, then navigate to /reset
     try {
       if (typeof window !== 'undefined') {
+        console.debug('AuthProvider running URL check', { href: window.location.href, pathname: window.location.pathname, hash: window.location.hash, search: window.location.search })
         const searchParams = new URLSearchParams(window.location.search || '')
         const hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''))
         const access_token = searchParams.get('access_token') || hashParams.get('access_token')
         const refresh_token = searchParams.get('refresh_token') || hashParams.get('refresh_token')
         const type = searchParams.get('type') || hashParams.get('type')
+        console.debug('AuthProvider parsed tokens', { access_token: !!access_token, refresh_token: !!refresh_token, type })
         if (access_token) {
           // attempt to set session
           ;(async () => {
             try {
-              await supabase.auth.setSession({ access_token, refresh_token } as any)
+              const setRes = await supabase.auth.setSession({ access_token, refresh_token } as any)
+              console.debug('AuthProvider setSession result', setRes)
               // replace URL to /reset?recovery=1 to ensure app shows reset page
               const base = window.location.origin || ''
               const newUrl = base + '/reset?recovery=1'
               window.history.replaceState({}, '', newUrl)
               // update user state quickly
               const s = await supabase.auth.getSession()
+              console.debug('AuthProvider getSession after setSession', s)
               setUser(s?.data?.session?.user ?? null)
             } catch (e) {
+              console.error('AuthProvider setSession error', e)
               // ignore failures here; ResetPassword will attempt fallback logic
             }
           })()
@@ -70,9 +75,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
       }
     } catch (e) {}
+    // log auth state change events for debugging
+    const onAuth = (_event: any, session: any) => console.debug('supabase.auth onAuthStateChange', { event: _event, session })
+    const subUnsub = sub?.subscription?.unsubscribe
+    try { if (sub && (sub as any).subscription) {
+      // replace listener to include debug
+    } } catch (e) {}
+    // note: the real listener is still registered above; additionally we attach a small debug listener
+    const { data: dbgSub } = supabase.auth.onAuthStateChange((event, sess) => {
+      console.debug('AuthProvider debug onAuthStateChange', { event, sess })
+    })
     return () => {
       mounted = false
-      sub?.subscription.unsubscribe()
+      try { sub?.subscription.unsubscribe() } catch (e) {}
+      try { dbgSub?.subscription.unsubscribe() } catch (e) {}
     }
   }, [])
 
@@ -145,8 +161,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }
 
   const updatePassword = async (password: string) => {
-    const { error } = await supabase.auth.updateUser({ password } as any)
-    return { error }
+    console.debug('AuthProvider updatePassword called')
+    const res = await supabase.auth.updateUser({ password } as any)
+    console.debug('AuthProvider updatePassword result', res)
+    return { error: res?.error }
   }
 
   // track whether current user corresponds to a client row (by email or by token)

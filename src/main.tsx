@@ -19,3 +19,10 @@ createRoot(document.getElementById('root')!).render(
     </QueryClientProvider>
   </React.StrictMode>
 )
+
+// Debug: log initial location when app boots
+try {
+  if (typeof window !== 'undefined') {
+    console.debug('App boot location', { href: window.location.href, pathname: window.location.pathname, hash: window.location.hash, search: window.location.search })
+  }
+} catch (e) {}

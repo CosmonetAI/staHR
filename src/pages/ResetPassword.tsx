@@ -137,11 +137,15 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
           const access_token = hashParams.get('access_token')
           const refresh_token = hashParams.get('refresh_token')
           if (access_token) {
-            const { error } = await supabase.auth.setSession({ access_token, refresh_token } as any).catch(() => ({ error: true }))
-            if (!error) {
+            console.debug('ResetPassword attempting setSession from hash', { access_token: !!access_token, refresh_token: !!refresh_token })
+            const setRes = await supabase.auth.setSession({ access_token, refresh_token } as any).catch((e) => ({ error: e }))
+            console.debug('ResetPassword setSession result', setRes)
+            if (!(setRes as any).error) {
               setSessionExists(true)
               return
             }
+            // if error, capture for UI
+            console.warn('ResetPassword setSession failed', setRes)
           }
         } catch (e) {
           // ignore
