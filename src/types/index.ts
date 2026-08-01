@@ -18,6 +18,8 @@ export type Candidate = {
   selstatus?: string
   remarks?: string
   f2f?: string
+  interview_slot?: string
+  confirmed_availability?: string
   experience?: number
   current_company?: string
   current_location?: string

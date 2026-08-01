@@ -316,6 +316,29 @@ serve(async (req) => {
           }
           return String(raw)
         })(),
+        interview_slot: (function() {
+          const todayIso = new Date().toISOString().slice(0,10)
+          const raw = c.interview_slot || c.interview_slot_raw || ''
+          if (!raw) return ''
+          const m = String(raw).match(/^(\d{4}-\d{2}-\d{2})(?:\s+(.*))?$/)
+          if (m) {
+            const d = new Date(m[1])
+            if (!isNaN(d.getTime())) {
+              const dIso = d.toISOString().slice(0,10)
+              return (dIso < todayIso ? todayIso : dIso) + (m[2] ? ' ' + m[2] : '')
+            }
+          }
+          const isoMatch = String(raw).match(/(\d{4}-\d{2}-\d{2})/)
+          if (isoMatch) {
+            const d = new Date(isoMatch[1])
+            if (!isNaN(d.getTime())) {
+              const dIso = d.toISOString().slice(0,10)
+              return String(raw).replace(isoMatch[1], dIso)
+            }
+          }
+          return String(raw)
+        })(),
+        confirmed_availability: (c.confirmed_availability || c.confirmed_availability_raw || ''),
         applied_job_id: c._job_id || c.applied_job_id || c.job_id || null,
         applied_job_title: c.applied_job_title || c.job_title || c.job_role || c.role || null
       })

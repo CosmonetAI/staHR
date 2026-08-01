@@ -59,6 +59,25 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
     } catch (e) {}
     return ''
   })
+  const [interviewSlotDate, setInterviewSlotDate] = React.useState<string>(() => {
+    try {
+      if (form && form.interview_slot) {
+        const parts = String(form.interview_slot).split(' ')
+        if (parts[0] && /^\d{4}-\d{2}-\d{2}$/.test(parts[0])) return parts[0]
+      }
+    } catch (e) {}
+    return ''
+  })
+  const [interviewSlotTime, setInterviewSlotTime] = React.useState<string>(() => {
+    try {
+      if (form && form.interview_slot) {
+        const parts = String(form.interview_slot).split(' ')
+        if (parts.length > 1) return parts.slice(1).join(' ')
+      }
+    } catch (e) {}
+    return ''
+  })
+  const [confirmedAvailability, setConfirmedAvailability] = React.useState<string>(() => String(form.confirmed_availability || ''))
 
   React.useEffect(() => {
     let mounted = true
@@ -137,7 +156,11 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
       onSave(updatedForm)
       setNewRemark('')
     } else {
-      onSave()
+      // ensure interview_slot and confirmed_availability are synced into form
+      const combinedInterviewSlot = interviewSlotDate && interviewSlotTime ? `${interviewSlotDate} ${interviewSlotTime}` : interviewSlotDate || interviewSlotTime || ''
+      const updated = { ...form, interview_slot: combinedInterviewSlot, confirmed_availability: confirmedAvailability }
+      setForm(updated)
+      onSave(updated)
       setNewRemark('')
     }
   }
@@ -269,6 +292,32 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
               <option value="">— select slot —</option>
               {TIME_SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
+          </div>
+        </div>
+        <div className="field-row">
+          <div className="field">
+            <label>Interview slot given by client</label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input type="date" min={today} value={interviewSlotDate || ''} onChange={(e) => {
+                const d = e.target.value
+                setInterviewSlotDate(d)
+                const combined = d && interviewSlotTime ? `${d} ${interviewSlotTime}` : d || interviewSlotTime || ''
+                setForm({ ...form, interview_slot: combined })
+              }} />
+              <select value={interviewSlotTime || ''} onChange={(e) => {
+                const s = e.target.value
+                setInterviewSlotTime(s)
+                const combined = interviewSlotDate && s ? `${interviewSlotDate} ${s}` : interviewSlotDate || s || ''
+                setForm({ ...form, interview_slot: combined })
+              }}>
+                <option value="">— select slot —</option>
+                {TIME_SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="field">
+            <label>Candidates confirmed availability</label>
+            <input value={confirmedAvailability || ''} onChange={(e) => { setConfirmedAvailability(e.target.value); setForm({ ...form, confirmed_availability: e.target.value }) }} placeholder="Yes / No / Pending or details" />
           </div>
         </div>
         <div className="field">

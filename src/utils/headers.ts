@@ -1,6 +1,5 @@
 // Canonical header keys in the specific order requested by the user
 export const CANDIDATE_HEADERS = [
-  'job_id',
   'date',
   'role',
   'name',
@@ -11,11 +10,12 @@ export const CANDIDATE_HEADERS = [
   'phone',
   'linkedin',
   'current_location',
-  'availability',
   'notice_period',
   'intstatus',
   'selstatus',
   'remarks',
+  'interview_slot',
+  'confirmed_availability',
   'f2f'
 ]
 
@@ -28,14 +28,22 @@ function toTitle(s: string) {
 }
 
 const LABEL_OVERRIDES: Record<string, string> = {
-  job_id: 'Job Id',
-  current_ctc: 'Current CTC',
-  expected_ctc: 'Expected CTC',
-  linkedin: 'LinkedIn Profile',
-  notice_period: 'Notice Period',
+  date: 'Date of submission',
+  name: 'Candidate Name',
+  experience: 'Relevant experience',
+  current_ctc: 'C-CTC',
+  expected_ctc: 'E-CTC',
+  email: 'Email id',
+  phone: 'Phone number',
+  linkedin: 'Linkedin profile',
+  current_location: 'Current Location',
+  notice_period: 'NP',
   intstatus: 'Interview Status',
   selstatus: 'Selection Status',
-  f2f: 'F2F'
+  remarks: 'Remarks',
+  interview_slot: 'Interview slot given by client',
+  confirmed_availability: 'Candidates confirmed availability',
+  f2f: 'F2F interview availability'
 }
 
 export const CANDIDATE_HEADER_LABELS = CANDIDATE_HEADERS.map(h => LABEL_OVERRIDES[h] || toTitle(h))
