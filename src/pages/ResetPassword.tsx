@@ -102,14 +102,46 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
     } catch (e) {}
 
     // Check if supabase client has created a session from URL (detectSessionInUrl=true)
-    supabase.auth.getSession().then(({ data }: any) => {
-      console.log('ResetPassword supabase.getSession', data)
-      if (data?.session) setSessionExists(true)
-      else setSessionExists(false)
-    }).catch((err: any) => {
-      console.error('ResetPassword getSession error', err)
-      setSessionExists(false)
-    })
+    // Try explicit URL session resolution first (handles some routing/hash edge cases)
+    ;(async () => {
+      try {
+        // Attempt to parse session from the URL (works when detectSessionInUrl misses)
+        if (typeof supabase.auth.getSessionFromUrl === 'function') {
+          const fromUrl = await supabase.auth.getSessionFromUrl().catch(() => null)
+          console.log('ResetPassword getSessionFromUrl', fromUrl)
+          if (fromUrl?.data?.session) {
+            setSessionExists(true)
+            return
+          }
+        }
+
+        // Fallback: if tokens are present in the hash, try to set the session directly
+        try {
+          const hash = typeof window !== 'undefined' ? window.location.hash.replace(/^#/, '') : ''
+          const hashParams = new URLSearchParams(hash)
+          const access_token = hashParams.get('access_token')
+          const refresh_token = hashParams.get('refresh_token')
+          if (access_token) {
+            const { error } = await supabase.auth.setSession({ access_token, refresh_token } as any).catch(() => ({ error: true }))
+            if (!error) {
+              setSessionExists(true)
+              return
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+
+        // final fallback: ask supabase for current session
+        const { data } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }))
+        console.log('ResetPassword supabase.getSession', data)
+        if (data?.session) setSessionExists(true)
+        else setSessionExists(false)
+      } catch (err: any) {
+        console.error('ResetPassword getSession error', err)
+        setSessionExists(false)
+      }
+    })()
   }, [])
 
   const navigate = useNavigate()

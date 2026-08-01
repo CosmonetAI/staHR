@@ -145,8 +145,34 @@ serve(async (req) => {
           const action = type === 'reset' ? 'recovery' : 'invite'
           const genResp: any = await sbAdmin.auth.admin.generateLink({ type: action, email: String(email), redirect_to: redirectTo } as any)
           const genJson = genResp?.data || genResp
-          const actionLink = genJson?.action_link || genJson?.url || genJson?.action_link_url || genJson?.link || genJson?.properties?.action_link
-          if (!actionLink) {
+
+          // Prefer hashed token when present so we can build a deterministic verify link
+          const hashedToken = genJson?.properties?.hashed_token ?? genJson?.hashed_token ?? null
+          const actionLink = genJson?.properties?.action_link || genJson?.action_link || genJson?.url || genJson?.action_link_url || genJson?.link || null
+          const returnedRedirectBase = genJson?.properties?.redirect_to ?? genJson?.redirect_to ?? null
+          const chosenRedirectBase = (returnedRedirectBase && String(returnedRedirectBase).trim()) || (redirectTo || appUrl)
+          const desiredPath = action === 'recovery' ? '/reset' : '/set-password'
+          let redirectToFinal: string | undefined = undefined
+          if (chosenRedirectBase) {
+            const baseClean = String(chosenRedirectBase).replace(/\/+$/, '')
+            redirectToFinal = baseClean.endsWith(desiredPath) ? baseClean : `${baseClean}${desiredPath}`
+          }
+
+          let finalActionLink: string | null = null
+          if (hashedToken) {
+            const baseAuth = SUPABASE_URL.replace(/\/+$/, '')
+            finalActionLink = `${baseAuth}/auth/v1/verify?token=${hashedToken}&type=${action}&redirect_to=${encodeURIComponent(redirectToFinal || '')}`
+          } else if (actionLink) {
+            try {
+              const actionUrl = new URL(actionLink)
+              if (redirectToFinal) actionUrl.searchParams.set('redirect_to', redirectToFinal)
+              finalActionLink = actionUrl.toString()
+            } catch (e) {
+              finalActionLink = actionLink
+            }
+          }
+
+          if (!finalActionLink) {
             console.error('generate_link (admin client) missing action link', genJson)
             // fallthrough to try fetch path
           } else {
@@ -157,8 +183,8 @@ serve(async (req) => {
               const appName = Deno.env.get('APP_NAME') || 'staHR'
               const subject = type === 'reset' ? (body.subject || `Reset your ${appName} password`) : (body.subject || `You're invited to join ${appName}`)
               const actionText = type === 'reset' ? (body.text || `Reset your password`) : (body.text || `You're invited to join ${appName}`)
-              const html = body.html || buildActionEmailHtml({ appName, actionLink, actionText, actionLabel: type === 'reset' ? 'Reset password' : 'Set your password' })
-              const text = body.text || `${actionText}: ${actionLink}`
+              const html = body.html || buildActionEmailHtml({ appName, actionLink: finalActionLink, actionText, actionLabel: type === 'reset' ? 'Reset password' : 'Set your password' })
+              const text = body.text || `${actionText}: ${finalActionLink}`
               await transporter.sendMail({ from, to: String(email), subject, text, html })
               return json({ ok: true })
             }
@@ -191,8 +217,32 @@ serve(async (req) => {
             // fallthrough to fallback
           } else {
             const genJson = await genResp.json() as any
-            const actionLink = genJson.action_link || genJson.url || genJson.action_link_url
-            if (!actionLink) {
+            const hashedToken = genJson?.properties?.hashed_token ?? genJson?.hashed_token ?? null
+            const actionLink = genJson.action_link || genJson.url || genJson.action_link_url || null
+            const returnedRedirectBase = genJson?.properties?.redirect_to ?? genJson?.redirect_to ?? null
+            const chosenRedirectBase = (returnedRedirectBase && String(returnedRedirectBase).trim()) || (redirectTo || appUrl)
+            const desiredPath = action === 'recovery' ? '/reset' : '/set-password'
+            let redirectToFinal: string | undefined = undefined
+            if (chosenRedirectBase) {
+              const baseClean = String(chosenRedirectBase).replace(/\/+$/, '')
+              redirectToFinal = baseClean.endsWith(desiredPath) ? baseClean : `${baseClean}${desiredPath}`
+            }
+
+            let finalActionLink: string | null = null
+            if (hashedToken) {
+              const baseAuth = SUPABASE_URL.replace(/\/+$/, '')
+              finalActionLink = `${baseAuth}/auth/v1/verify?token=${hashedToken}&type=${action}&redirect_to=${encodeURIComponent(redirectToFinal || '')}`
+            } else if (actionLink) {
+              try {
+                const actionUrl = new URL(actionLink)
+                if (redirectToFinal) actionUrl.searchParams.set('redirect_to', redirectToFinal)
+                finalActionLink = actionUrl.toString()
+              } catch (e) {
+                finalActionLink = actionLink
+              }
+            }
+
+            if (!finalActionLink) {
               console.error('generate_link missing action link', genJson)
               // fallthrough to fallback
             } else {
@@ -203,8 +253,8 @@ serve(async (req) => {
                 const appName = Deno.env.get('APP_NAME') || 'staHR'
                 const subject = type === 'reset' ? (body.subject || `Reset your ${appName} password`) : (body.subject || `You're invited to join ${appName}`)
                 const actionText = type === 'reset' ? (body.text || `Reset your password`) : (body.text || `You're invited to join ${appName}`)
-                const html = body.html || buildActionEmailHtml({ appName, actionLink, actionText, actionLabel: type === 'reset' ? 'Reset password' : 'Set your password' })
-                const text = body.text || `${actionText}: ${actionLink}`
+                const html = body.html || buildActionEmailHtml({ appName, actionLink: finalActionLink, actionText, actionLabel: type === 'reset' ? 'Reset password' : 'Set your password' })
+                const text = body.text || `${actionText}: ${finalActionLink}`
 
                 await transporter.sendMail({ from, to: String(email), subject, text, html })
                 return json({ ok: true })
