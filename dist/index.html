@@ -6,10 +6,30 @@
     <title>HR Candidate Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <script type="module" crossorigin src="/assets/index-BdsfoNyf.js"></script>
+    <script type="module" crossorigin src="/assets/index-SOgEl0PA.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-CM25hoKg.css">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"></div>
+    <script>
+      // Preserve Supabase auth fragments across SPA bootstrap.
+      // If the email recovery link includes tokens in the URL hash,
+      // stash them in sessionStorage so the client app can restore
+      // the session after the framework initializes.
+      (function() {
+        try {
+          const h = window.location.hash || ''
+          if (h && h.indexOf('access_token=') !== -1) {
+            sessionStorage.setItem('supabase_auth_hash', h.replace(/^#/, ''))
+            // Redirect user to the reset route (removes tokens from visible URL)
+            const base = window.location.origin || ''
+            const resetPath = '/reset?recovery=1'
+            window.history.replaceState({}, '', base + resetPath)
+          }
+        } catch (e) {
+          console.error('pre-bootstrap hash stash failed', e)
+        }
+      })()
+    </script>
   </body>
 </html>
