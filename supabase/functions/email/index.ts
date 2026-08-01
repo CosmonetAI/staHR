@@ -150,7 +150,9 @@ serve(async (req) => {
           const hashedToken = genJson?.properties?.hashed_token ?? genJson?.hashed_token ?? null
           const actionLink = genJson?.properties?.action_link || genJson?.action_link || genJson?.url || genJson?.action_link_url || genJson?.link || null
           const returnedRedirectBase = genJson?.properties?.redirect_to ?? genJson?.redirect_to ?? null
-          const chosenRedirectBase = (returnedRedirectBase && String(returnedRedirectBase).trim()) || (redirectTo || appUrl)
+          // Prefer explicit redirect requested by the caller (redirectTo), then any redirect returned by Supabase,
+          // then fall back to configured appUrl. This ensures dev callers can force local redirects.
+          const chosenRedirectBase = (redirectTo && String(redirectTo).trim()) || (returnedRedirectBase && String(returnedRedirectBase).trim()) || appUrl
           const desiredPath = action === 'recovery' ? '/reset' : '/set-password'
           let redirectToFinal: string | undefined = undefined
           if (chosenRedirectBase) {
@@ -220,7 +222,9 @@ serve(async (req) => {
             const hashedToken = genJson?.properties?.hashed_token ?? genJson?.hashed_token ?? null
             const actionLink = genJson.action_link || genJson.url || genJson.action_link_url || null
             const returnedRedirectBase = genJson?.properties?.redirect_to ?? genJson?.redirect_to ?? null
-            const chosenRedirectBase = (returnedRedirectBase && String(returnedRedirectBase).trim()) || (redirectTo || appUrl)
+            // Prefer explicit redirect requested by the caller (redirectTo), then any redirect returned by Supabase,
+            // then fall back to configured appUrl. This ensures dev callers can force local redirects.
+            const chosenRedirectBase = (redirectTo && String(redirectTo).trim()) || (returnedRedirectBase && String(returnedRedirectBase).trim()) || appUrl
             const desiredPath = action === 'recovery' ? '/reset' : '/set-password'
             let redirectToFinal: string | undefined = undefined
             if (chosenRedirectBase) {
