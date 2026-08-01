@@ -37,9 +37,14 @@ export default function ResetPassword() {
       try {
         const FUNCTIONS_BASE = import.meta.env.VITE_FUNCTIONS_BASE || '/functions/v1'
         const anon = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '')
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+        if (anon) {
+          headers['apikey'] = anon
+          headers['Authorization'] = `Bearer ${anon}`
+        }
         const resp = await fetch(`${FUNCTIONS_BASE.replace(/\/$/, '')}/email`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(anon ? { apikey: anon } : {}) },
+          headers,
           body: JSON.stringify({ type: 'reset', email: data.email, redirectTo })
         })
         if (!resp.ok) {
