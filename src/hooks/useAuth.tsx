@@ -54,15 +54,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           // attempt to set session
           try {
             // mark recovery flow so other listeners can force the reset page
-            try { sessionStorage.setItem('supabase_recovery', '1') } catch (e) {}
+            try {
+              // store whether this is an invite or a recovery so listeners can restore correct route
+              const tokenType = type === 'invite' ? 'set-password' : 'reset'
+              sessionStorage.setItem('supabase_recovery', tokenType)
+            } catch (e) {}
           } catch (e) {}
           ;(async () => {
             try {
               const setRes = await supabase.auth.setSession({ access_token, refresh_token } as any)
               console.debug('AuthProvider setSession result', setRes)
-              // replace URL to /reset?recovery=1 to ensure app shows reset page
+              // replace URL to the appropriate recovery path (invite -> /set-password, recovery -> /reset)
               const base = window.location.origin || ''
-              const newUrl = base + '/reset?recovery=1'
+              const recoveryPath = type === 'invite' ? '/set-password' : '/reset'
+              const newUrl = base + recoveryPath + '?recovery=1'
               window.history.replaceState({}, '', newUrl)
               // update user state quickly
               const s = await supabase.auth.getSession()
@@ -73,9 +78,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               // ignore failures here; ResetPassword will attempt fallback logic
             }
           })()
-        } else if (type === 'recovery') {
-          // ensure user is taken to /reset
-          try { const base = window.location.origin || ''; const newUrl = base + '/reset?recovery=1'; window.history.replaceState({}, '', newUrl) } catch (e) {}
+        } else if (type === 'recovery' || type === 'invite') {
+          // ensure user is taken to the appropriate recovery path
+          try {
+            const base = window.location.origin || ''
+            const recoveryPath = type === 'invite' ? '/set-password' : '/reset'
+            const newUrl = base + recoveryPath + '?recovery=1'
+            window.history.replaceState({}, '', newUrl)
+          } catch (e) {}
         }
       }
     } catch (e) {}
@@ -86,15 +96,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // replace listener to include debug
     } } catch (e) {}
     // note: the real listener is still registered above; additionally we attach a small debug listener
-    const { data: dbgSub } = supabase.auth.onAuthStateChange((event, sess) => {
+      const { data: dbgSub } = supabase.auth.onAuthStateChange((event, sess) => {
       console.debug('AuthProvider debug onAuthStateChange', { event, sess })
       try {
         const recovery = sessionStorage.getItem('supabase_recovery')
         if (recovery && sess?.session) {
-          // Force the reset route when a recovery flow is pending
+          // Force the appropriate recovery route when a recovery flow is pending
           try {
             const base = window.location.origin || ''
-            const newUrl = base + '/reset?recovery=1'
+            const newUrl = base + `/${recovery}` + '?recovery=1'
             window.history.replaceState({}, '', newUrl)
           } catch (e) {}
           try { sessionStorage.removeItem('supabase_recovery') } catch (e) {}
