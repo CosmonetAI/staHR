@@ -222,8 +222,23 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
       if (!vals.password || vals.password.length < 6) throw new Error('Password must be at least 6 characters')
       const { error } = await updatePassword(vals.password)
       if (error) throw error
-      setNewPwdMsg('Password updated successfully. You can now sign in.')
-      // Sign out and navigate to login after short delay
+      setNewPwdMsg('Password updated successfully. Finalizing invite...')
+      // Attempt to accept any pending invitation for this user (edge function)
+      try {
+        const accept = await supabase.functions.invoke('accept-invitation')
+        if (!accept.error && accept.data && accept.data.accepted) {
+          setNewPwdMsg('Invite accepted. Redirecting to dashboard...')
+          setTimeout(async () => {
+            try { await signOut() } catch (_) {}
+            navigate('/recruitment')
+          }, 800)
+          return
+        }
+      } catch (e) {
+        console.error('accept-invitation failed', e)
+      }
+
+      // Sign out and navigate to login after short delay if no invite accepted
       setTimeout(async () => {
         try {
           await signOut()
