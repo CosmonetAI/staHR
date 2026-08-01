@@ -76,6 +76,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         // non-fatal: continue even if profile insert fails
         console.warn('Failed to insert profile', e)
       }
+      // try to send a signup confirmation/welcome email via centralized functions/email
+      try {
+        const FUNCTIONS_BASE = (import.meta.env.VITE_FUNCTIONS_BASE as string) || '/functions/v1'
+        const appName = (import.meta.env.VITE_APP_NAME as string) || (typeof window !== 'undefined' && window.location && window.location.hostname) || 'staHR'
+        const subject = `Welcome to ${appName}`
+        const html = `<p>Hi ${payload.full_name || ''},</p><p>Thanks for signing up for ${appName}. You can sign in at <a href="${redirectTo || '/'}">${redirectTo || '/'}</a>.</p>`
+        const anon = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '')
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+        if (anon) {
+          headers['apikey'] = anon
+          headers['Authorization'] = `Bearer ${anon}`
+        }
+        await fetch(`${FUNCTIONS_BASE.replace(/\/$/, '')}/email`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ type: 'notification', email: payload.email, subject, html })
+        })
+      } catch (e) {
+        console.warn('Failed to send signup confirmation email', e)
+      }
     }
 
     return data
