@@ -9,10 +9,14 @@ const hasRecoveryParams = () => {
   try {
     const searchParams = new URLSearchParams(window.location.search || '')
     const hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''))
+    const pathname = window.location.pathname || ''
     return (
+      pathname === '/set-password' ||
       searchParams.get('recovery') === '1' ||
       searchParams.get('type') === 'recovery' ||
+      searchParams.get('type') === 'invite' ||
       hashParams.get('type') === 'recovery' ||
+      hashParams.get('type') === 'invite' ||
       hashParams.has('access_token') ||
       hashParams.has('refresh_token')
     )
