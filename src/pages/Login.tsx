@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useAuth } from '../hooks/useAuth'
@@ -80,7 +80,7 @@ export default function Login() {
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <label style={{ fontSize: 13 }}><input type="checkbox" style={{ marginRight: 8 }} /> Remember me</label>
-            <a style={{ fontSize: 13, color: 'var(--primary)' }} href="/reset">Forgot?</a>
+            <Link style={{ fontSize: 13, color: 'var(--primary)' }} to="/reset">Forgot?</Link>
           </div>
 
           {serverError && <div className="field-error" style={{ marginBottom: 12 }}>{serverError}</div>}
@@ -90,7 +90,7 @@ export default function Login() {
           </button>
         </form>
         <div style={{ marginTop: 12, textAlign: 'center' }}>
-          <a href="/signup">Create an account</a>
+          <Link to="/signup">Create an account</Link>
         </div>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useForm } from 'react-hook-form'
+import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 import { supabase } from '../supabase/supabaseClient'
 
@@ -106,6 +107,8 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
     })
   }, [])
 
+  const navigate = useNavigate()
+
   const handleNewPassword = async (vals: any) => {
     setNewPwdError(null)
     setNewPwdMsg(null)
@@ -117,7 +120,7 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
       setNewPwdMsg('Password updated successfully. You can now sign in.')
       // navigate to login after short delay
       setTimeout(() => {
-        window.location.href = '/login'
+        navigate('/login')
       }, 1200)
     } catch (err: any) {
       setNewPwdError(err?.message || String(err))
