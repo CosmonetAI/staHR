@@ -156,6 +156,9 @@ function normalizeRow(raw: Record<string, any>) {
   }
   normalized.linkedin = firstValue(normalized, ['linkedin', 'linkedin_profile', 'linkedin_url'])
   normalized.availability = firstValue(normalized, ['availability', 'interview_availability'])
+  // new fields: interview slot provided by client, and whether candidate confirmed availability
+  normalized.interview_slot = firstValue(normalized, ['interview_slot', 'interview_slot_given_by_client', 'slot', 'interview_slot_client'])
+  normalized.confirmed_availability = firstValue(normalized, ['confirmed_availability', 'candidates_confirmed_availability', 'candidates_confirmed', 'confirmed_avail'])
   normalized.intstatus = firstValue(normalized, ['intstatus', 'interview_status'])
   normalized.selstatus = normalizeSelectionStatus(firstValue(normalized, ['selstatus', 'selection_status', 'status', 'candidate_status']))
   normalized.remarks = firstValue(normalized, ['remarks', 'notes'])
@@ -179,6 +182,8 @@ function buildCandidate(normalized: Record<string, any>, fileName: string, sheet
       notice_period: parsed.notice_period,
       current_ctc: parsed.current_ctc,
       expected_ctc: parsed.expected_ctc,
+        interview_slot: parsed.interview_slot || normalized.interview_slot || '',
+        confirmed_availability: parsed.confirmed_availability || normalized.confirmed_availability || '',
       sheet_name: sheetName || fileName,
       job_role: normalized.role || sheetName || fileName,
       role: normalized.role || sheetName || fileName,
@@ -210,6 +215,8 @@ function buildCandidate(normalized: Record<string, any>, fileName: string, sheet
       notice_period: normalized.notice_period || normalized.np || '',
       current_ctc: parseNumber(normalized.current_ctc),
       expected_ctc: parseNumber(normalized.expected_ctc),
+        interview_slot: normalized.interview_slot || '',
+        confirmed_availability: normalized.confirmed_availability || '',
       sheet_name: sheetName || fileName,
       job_role: normalized.role || sheetName || fileName,
       role: normalized.role || sheetName || fileName,
