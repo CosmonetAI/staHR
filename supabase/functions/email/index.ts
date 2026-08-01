@@ -152,13 +152,18 @@ serve(async (req) => {
           const returnedRedirectBase = genJson?.properties?.redirect_to ?? genJson?.redirect_to ?? null
           // Prefer explicit redirect requested by the caller (redirectTo), then any redirect returned by Supabase,
           // then fall back to configured appUrl. This ensures dev callers can force local redirects.
-          const chosenRedirectBase = (redirectTo && String(redirectTo).trim()) || (returnedRedirectBase && String(returnedRedirectBase).trim()) || appUrl
-          const desiredPath = action === 'recovery' ? '/reset' : '/set-password'
-          let redirectToFinal: string | undefined = undefined
-          if (chosenRedirectBase) {
-            const baseClean = String(chosenRedirectBase).replace(/\/+$/, '')
-            redirectToFinal = baseClean.endsWith(desiredPath) ? baseClean : `${baseClean}${desiredPath}`
-          }
+            const chosenRedirectBase = (redirectTo && String(redirectTo).trim()) || (returnedRedirectBase && String(returnedRedirectBase).trim()) || appUrl
+            const desiredPath = action === 'recovery' ? '/reset' : '/set-password'
+            let redirectToFinal: string | undefined = undefined
+            if (chosenRedirectBase) {
+              try {
+                const parsed = new URL(String(chosenRedirectBase))
+                redirectToFinal = `${parsed.origin}${desiredPath}`
+              } catch (e) {
+                const baseClean = String(chosenRedirectBase).replace(/\/\/+$/, '')
+                redirectToFinal = baseClean.endsWith(desiredPath) ? baseClean : `${baseClean}${desiredPath}`
+              }
+            }
 
           let finalActionLink: string | null = null
           if (hashedToken) {
@@ -228,8 +233,13 @@ serve(async (req) => {
             const desiredPath = action === 'recovery' ? '/reset' : '/set-password'
             let redirectToFinal: string | undefined = undefined
             if (chosenRedirectBase) {
-              const baseClean = String(chosenRedirectBase).replace(/\/+$/, '')
-              redirectToFinal = baseClean.endsWith(desiredPath) ? baseClean : `${baseClean}${desiredPath}`
+              try {
+                const parsed = new URL(String(chosenRedirectBase))
+                redirectToFinal = `${parsed.origin}${desiredPath}`
+              } catch (e) {
+                const baseClean = String(chosenRedirectBase).replace(/\/\/+$/, '')
+                redirectToFinal = baseClean.endsWith(desiredPath) ? baseClean : `${baseClean}${desiredPath}`
+              }
             }
 
             let finalActionLink: string | null = null

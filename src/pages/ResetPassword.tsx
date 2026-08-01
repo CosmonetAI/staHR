@@ -127,30 +127,68 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
           }
         }
 
-        // Fallback: if tokens are present in the hash, try to set the session directly.
-        // If the hash was consumed earlier, we may have stashed it during pre-bootstrap in sessionStorage.
+        // Fallback: try several strategies to locate tokens and set the session.
         try {
-          let hash = typeof window !== 'undefined' ? window.location.hash.replace(/^#/, '') : ''
-          if (!hash && typeof window !== 'undefined') {
+          const tryParseHash = (raw: string) => {
+            if (!raw) return null
+            const clean = raw.replace(/^#/, '')
+            const params = new URLSearchParams(clean)
+            const access_token = params.get('access_token')
+            const refresh_token = params.get('refresh_token')
+            if (access_token) return { access_token, refresh_token }
+            return null
+          }
+
+          let tokens: any = null
+
+          // 1) Direct hash on location (normal case)
+          if (typeof window !== 'undefined' && window.location.hash) {
+            tokens = tryParseHash(window.location.hash)
+          }
+
+          // 2) Stashed hash from pre-bootstrap
+          if (!tokens && typeof window !== 'undefined') {
             const stashed = sessionStorage.getItem('supabase_auth_hash')
             if (stashed) {
               console.debug('ResetPassword using stashed auth hash from sessionStorage')
-              hash = stashed
+              tokens = tryParseHash(stashed)
               try { sessionStorage.removeItem('supabase_auth_hash') } catch (e) {}
             }
           }
-          const hashParams = new URLSearchParams(hash)
-          const access_token = hashParams.get('access_token')
-          const refresh_token = hashParams.get('refresh_token')
-          if (access_token) {
-            console.debug('ResetPassword attempting setSession from hash/fallback', { access_token: !!access_token, refresh_token: !!refresh_token })
-            const setRes = await supabase.auth.setSession({ access_token, refresh_token } as any).catch((e) => ({ error: e }))
+
+          // 3) Encoded redirect in search params (some email links include redirect_to that embeds a hash)
+          if (!tokens && typeof window !== 'undefined') {
+            try {
+              const sp = new URLSearchParams(window.location.search || '')
+              const redirectToRaw = sp.get('redirect_to') || sp.get('redirect') || sp.get('redirectTo')
+              if (redirectToRaw) {
+                const decoded = decodeURIComponent(redirectToRaw)
+                const idx = decoded.indexOf('#')
+                if (idx !== -1) tokens = tryParseHash(decoded.slice(idx))
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
+
+          // 4) As a last-ditch, scan full href for an access_token fragment
+          if (!tokens && typeof window !== 'undefined') {
+            const href = window.location.href || ''
+            const m = href.match(/(#|&)access_token=([^&]+)/)
+            if (m) {
+              const fragment = href.slice(href.indexOf(m[0]) + 1)
+              tokens = tryParseHash(fragment)
+            }
+          }
+
+          if (tokens?.access_token) {
+            console.debug('ResetPassword attempting setSession from extracted tokens', { access_token: !!tokens.access_token, refresh_token: !!tokens.refresh_token })
+            const setRes = await supabase.auth.setSession({ access_token: tokens.access_token, refresh_token: tokens.refresh_token } as any).catch((e) => ({ error: e }))
             console.debug('ResetPassword setSession result', setRes)
             if (!(setRes as any).error) {
               setSessionExists(true)
               return
             }
-            // if error, capture for UI
             console.warn('ResetPassword setSession failed', setRes)
           }
         } catch (e) {
