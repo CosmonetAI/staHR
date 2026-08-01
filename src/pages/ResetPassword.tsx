@@ -89,8 +89,10 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
   React.useEffect(() => {
     // Detect recovery mode: query param type=recovery or access_token in hash
     try {
+      const href = typeof window !== 'undefined' ? window.location.href : ''
       const search = typeof window !== 'undefined' ? window.location.search : ''
       const hash = typeof window !== 'undefined' ? window.location.hash : ''
+      console.log('ResetPassword load', { href, search, hash })
       const params = new URLSearchParams(search)
       const type = params.get('type')
       const hasAccessToken = search.includes('access_token') || hash.includes('access_token')
@@ -101,8 +103,11 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
 
     // Check if supabase client has created a session from URL (detectSessionInUrl=true)
     supabase.auth.getSession().then(({ data }: any) => {
+      console.log('ResetPassword supabase.getSession', data)
       if (data?.session) setSessionExists(true)
-    }).catch(() => {
+      else setSessionExists(false)
+    }).catch((err: any) => {
+      console.error('ResetPassword getSession error', err)
       setSessionExists(false)
     })
   }, [])
