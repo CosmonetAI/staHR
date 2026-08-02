@@ -8,8 +8,11 @@ import { useAuth } from '../hooks/useAuth'
 const hasRecoveryParams = () => {
   try {
     const searchParams = new URLSearchParams(window.location.search || '')
-    const hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''))
-    const pathname = window.location.pathname || ''
+    const rawHash = (window.location.hash || '').replace(/^#/, '')
+    const hashParams = new URLSearchParams(rawHash)
+    const pathname = (window.location.pathname || '').replace(/\/$/, '')
+    // debug
+    try { console.debug('hasRecoveryParams', { pathname, search: window.location.search, hash: rawHash, searchParams: Object.fromEntries(searchParams.entries()), hashParams: Object.fromEntries(hashParams.entries()) }) } catch (e) {}
     return (
       pathname === '/set-password' ||
       searchParams.get('recovery') === '1' ||
@@ -101,7 +104,13 @@ export default function ResetPassword() {
 
 function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading }: any) {
   const { register, handleSubmit, formState: { errors } } = useForm<any>({ resolver: async (v: any) => ({ values: v, errors: {} }) })
-  const [isRecovery, setIsRecovery] = useState(() => hasRecoveryParams())
+  const [isRecovery, setIsRecovery] = useState(() => {
+    try {
+      const stored = typeof window !== 'undefined' ? sessionStorage.getItem('supabase_recovery') : null
+      if (stored === 'set-password' || stored === 'reset') return true
+    } catch (e) {}
+    return hasRecoveryParams()
+  })
   const [sessionExists, setSessionExists] = useState(false)
   const [newPwdLoading, setNewPwdLoading] = useState(false)
   const [newPwdError, setNewPwdError] = useState<string | null>(null)
