@@ -173,6 +173,13 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
           if (!tokens && typeof window !== 'undefined') {
             try {
               const sp = new URLSearchParams(window.location.search || '')
+              // Direct query-param tokens (some redirectors convert #hash to ?access_token=...)
+              const qpAccess = sp.get('access_token') || sp.get('accessToken')
+              const qpRefresh = sp.get('refresh_token') || sp.get('refreshToken')
+              if (qpAccess) {
+                console.debug('ResetPassword found tokens in query params')
+                tokens = { access_token: qpAccess, refresh_token: qpRefresh }
+              }
               const redirectToRaw = sp.get('redirect_to') || sp.get('redirect') || sp.get('redirectTo')
               if (redirectToRaw) {
                 const decoded = decodeURIComponent(redirectToRaw)
