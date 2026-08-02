@@ -13,16 +13,32 @@
       // Preserve Supabase auth fragments across SPA bootstrap.
       // If the email recovery link includes tokens in the URL hash,
       // stash them in sessionStorage so the client app can restore
-      // the session after the framework initializes.
+      // the session after the framework initializes. Also record
+      // whether this is an invite (set-password) or recovery (reset)
       (function() {
         try {
-          const h = window.location.hash || ''
-          if (h && h.indexOf('access_token=') !== -1) {
-            sessionStorage.setItem('supabase_auth_hash', h.replace(/^#/, ''))
-            // Redirect user to the reset route (removes tokens from visible URL)
-            const base = window.location.origin || ''
-            const resetPath = '/reset?recovery=1'
-            window.history.replaceState({}, '', base + resetPath)
+          const rawHash = window.location.hash || ''
+          if (rawHash && rawHash.indexOf('access_token=') !== -1) {
+            const clean = rawHash.replace(/^#/, '')
+            try { sessionStorage.setItem('supabase_auth_hash', clean) } catch (e) {}
+
+            // detect type from hash params
+            try {
+              const params = new URLSearchParams(clean)
+              const type = params.get('type') || ''
+              const tokenType = type === 'invite' ? 'set-password' : 'reset'
+              try { sessionStorage.setItem('supabase_recovery', tokenType) } catch (e) {}
+
+              // Redirect user to the appropriate recovery route (removes tokens from visible URL)
+              const base = window.location.origin || ''
+              const recoveryPath = tokenType === 'set-password' ? '/set-password' : '/reset'
+              window.history.replaceState({}, '', base + recoveryPath + '?recovery=1')
+            } catch (e) {
+              // fallback to /reset
+              try { sessionStorage.setItem('supabase_recovery', 'reset') } catch (e) {}
+              const base = window.location.origin || ''
+              window.history.replaceState({}, '', base + '/reset?recovery=1')
+            }
           }
         } catch (e) {
           console.error('pre-bootstrap hash stash failed', e)

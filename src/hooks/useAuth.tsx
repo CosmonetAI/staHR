@@ -58,6 +58,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               // store whether this is an invite or a recovery so listeners can restore correct route
               const tokenType = type === 'invite' ? 'set-password' : 'reset'
               sessionStorage.setItem('supabase_recovery', tokenType)
+              console.debug('useAuth: stored supabase_recovery=', tokenType)
             } catch (e) {}
           } catch (e) {}
           ;(async () => {
@@ -68,6 +69,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               const base = window.location.origin || ''
               const recoveryPath = type === 'invite' ? '/set-password' : '/reset'
               const newUrl = base + recoveryPath + '?recovery=1'
+              console.debug('useAuth: replacing URL to', newUrl)
               window.history.replaceState({}, '', newUrl)
               // update user state quickly
               const s = await supabase.auth.getSession()
@@ -85,6 +87,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             const recoveryPath = type === 'invite' ? '/set-password' : '/reset'
             const newUrl = base + recoveryPath + '?recovery=1'
             window.history.replaceState({}, '', newUrl)
+          } catch (e) {}
+        } else {
+          // If path already indicates set-password, mark recovery so ResetPassword shows correctly
+          try {
+            if (typeof window !== 'undefined' && window.location && String(window.location.pathname).replace(/\/$/, '') === '/set-password') {
+              try { sessionStorage.setItem('supabase_recovery', 'set-password') } catch (e) {}
+            }
           } catch (e) {}
         }
       }
@@ -105,6 +114,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           try {
             const base = window.location.origin || ''
             const newUrl = base + `/${recovery}` + '?recovery=1'
+            console.debug('useAuth: restoring recovery path ->', newUrl)
             window.history.replaceState({}, '', newUrl)
           } catch (e) {}
           try { sessionStorage.removeItem('supabase_recovery') } catch (e) {}
