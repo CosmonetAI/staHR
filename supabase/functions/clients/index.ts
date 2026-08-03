@@ -169,25 +169,33 @@ serve(async (req) => {
       }
 
       // send password reset / invite email via centralized email function
-      try {
-        const functionsBase = Deno.env.get('FUNCTIONS_BASE') || (SUPABASE_URL ? `${SUPABASE_URL}/functions/v1` : undefined)
-        const appUrl = Deno.env.get('APP_URL') || Deno.env.get('SITE_URL') || undefined
-        const redirectTo = appUrl ? `${appUrl}/reset` : undefined
-        const resp = await fetch(`${functionsBase.replace(/\/$/, '')}/email`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'apikey': SUPABASE_ANON_KEY
-          },
-          body: JSON.stringify({ type: 'invite', email: c.email, redirectTo })
-        })
-        if (!resp.ok) {
-          const txt = await resp.text().catch(() => '')
-          console.warn('Email function returned non-ok', resp.status, txt)
+      // NOTE: By default we do NOT send invite emails for client onboarding in production.
+      // Set environment variable `SEND_CLIENT_INVITE_EMAILS=true` in the function/service
+      // environment if you explicitly want to enable sending these emails.
+      const sendInvites = (Deno.env.get('SEND_CLIENT_INVITE_EMAILS') || 'false') === 'true'
+      if (sendInvites) {
+        try {
+          const functionsBase = Deno.env.get('FUNCTIONS_BASE') || (SUPABASE_URL ? `${SUPABASE_URL}/functions/v1` : undefined)
+          const appUrl = Deno.env.get('APP_URL') || Deno.env.get('SITE_URL') || undefined
+          const redirectTo = appUrl ? `${appUrl}/reset` : undefined
+          const resp = await fetch(`${functionsBase.replace(/\/$/, '')}/email`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+              'apikey': SUPABASE_ANON_KEY
+            },
+            body: JSON.stringify({ type: 'invite', email: c.email, redirectTo })
+          })
+          if (!resp.ok) {
+            const txt = await resp.text().catch(() => '')
+            console.warn('Email function returned non-ok', resp.status, txt)
+          }
+        } catch (e) {
+          console.warn('Failed to send invite email via email function', e)
         }
-      } catch (e) {
-        console.warn('Failed to send invite email via email function', e)
+      } else {
+        console.debug('Skipping invite email for client onboarding (SEND_CLIENT_INVITE_EMAILS not enabled)')
       }
 
       return json(data && data[0] ? data[0] : data)
