@@ -1,6 +1,8 @@
 import React from 'react'
 import FileUpload from '../../../components/FileUpload'
 import { JobService } from '../services/jobService'
+import { supabase } from '../../../supabase/supabaseClient'
+import { useAuth } from '../../../hooks/useAuth'
 
 type Props = {
   form: any
@@ -16,6 +18,7 @@ type Props = {
 }
 
 export default function CandidateForm({ form, setForm, importPreview, importErrors, handleExcelFile, importParsedRows, onCancel, onSave, editingId, onClearImport }: Props) {
+  const { isClient } = useAuth()
   const STATUS_LABEL: any = { selected: 'Selected', rejected: 'Rejected', hold: 'On hold', progress: 'In progress', dropped: 'Dropped out' }
   const [errors, setErrors] = React.useState<Record<string,string>>({})
   const NOTICE_OPTIONS = ['Immediate', '15 Days', '30 Days', '60 Days', '90 Days']
@@ -78,6 +81,9 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
     return ''
   })
   const [confirmedAvailability, setConfirmedAvailability] = React.useState<string>(() => String(form.confirmed_availability || ''))
+  const [resumeFile, setResumeFile] = React.useState<File | null>(null)
+  const [resumeUploading, setResumeUploading] = React.useState(false)
+  const [resumeUrl, setResumeUrl] = React.useState<string>(() => String(form.resume_url || form.resume || ''))
 
   const clearError = (field: string) => {
   setErrors(prev => {
@@ -167,10 +173,43 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
     } else {
       // ensure interview_slot and confirmed_availability are synced into form
       const combinedInterviewSlot = interviewSlotDate && interviewSlotTime ? `${interviewSlotDate} ${interviewSlotTime}` : interviewSlotDate || interviewSlotTime || ''
-      const updated = { ...form, interview_slot: combinedInterviewSlot, confirmed_availability: confirmedAvailability }
-      setForm(updated)
-      onSave(updated)
-      setNewRemark('')
+      const doSave = async () => {
+        let updatedForm: any = { ...form, interview_slot: combinedInterviewSlot, confirmed_availability: confirmedAvailability }
+        // If a resume file is present, upload it to Supabase storage
+        if (resumeFile) {
+          try {
+            setResumeUploading(true)
+            const bucket = String(import.meta.env.VITE_RESUME_BUCKET || 'resumes')
+            const filePath = `resumes/${Date.now()}_${resumeFile.name.replace(/[^a-zA-Z0-9_.-]/g, '_')}`
+            const { error: uploadError } = await supabase.storage.from(bucket).upload(filePath, resumeFile, { upsert: true })
+            if (uploadError) throw uploadError
+            // attempt to get public URL (bucket must be public)
+            try {
+              const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(filePath)
+              if (publicData && (publicData.publicUrl || publicData.publicURL || publicData.public_url)) {
+                const publicUrl = publicData.publicUrl || publicData.publicURL || publicData.public_url
+                updatedForm = { ...updatedForm, resume_url: publicUrl }
+                setResumeUrl(publicUrl)
+              } else {
+                updatedForm = { ...updatedForm, resume_path: filePath }
+              }
+            } catch (err) {
+              updatedForm = { ...updatedForm, resume_path: filePath }
+            }
+          } catch (err: any) {
+            console.error('Resume upload failed', err)
+            setResumeUploading(false)
+            return
+          } finally {
+            setResumeUploading(false)
+          }
+        }
+
+        setForm(updatedForm)
+        onSave(updatedForm)
+        setNewRemark('')
+      }
+      void doSave()
     }
   }
 
@@ -179,7 +218,10 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
     setNewRemark(''); setErrors({});
   }, [editingId])
 
-  
+  React.useEffect(() => {
+    // sync resume url from form when editing changes
+    setResumeUrl(String(form.resume_url || form.resume || ''))
+  }, [editingId, form.resume_url, form.resume])
 
   return (
     <>
@@ -265,6 +307,59 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
         <div className="field">
           <label>LinkedIn profile</label>
           <input value={form.linkedin || ''} onChange={(e) => setForm({ ...form, linkedin: e.target.value })} placeholder="https://linkedin.com/in/…" />
+        </div>
+
+        <div className="field">
+          <label>Resume (PDF / DOC / DOCX)</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="file" accept=".pdf,.doc,.docx" onChange={(e) => { if (e.target.files && e.target.files[0]) setResumeFile(e.target.files[0]) }} />
+            {resumeUploading && <span style={{ fontSize: 13 }}>Uploading...</span>}
+            {!resumeUploading && (resumeUrl || form.resume_path) && (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    let urlToFetch = resumeUrl || ''
+                    if (!urlToFetch && form.resume_path) {
+                      try {
+                        const parts = String(form.resume_path || '').split('/')
+                        const bucket = parts[0]
+                        const path = parts.slice(1).join('/')
+                        if (bucket && path) {
+                          const publicData = await supabase.storage.from(bucket).getPublicUrl(path)
+                          urlToFetch = publicData?.data?.publicUrl || publicData?.data?.publicURL || publicData?.data?.public_url || ''
+                        }
+                      } catch (e) { /* ignore */ }
+                    }
+                    if (!urlToFetch) throw new Error('No resume URL available')
+                    const resp = await fetch(urlToFetch)
+                    if (!resp.ok) throw new Error('Failed to fetch resume')
+                    const blob = await resp.blob()
+                    const url = URL.createObjectURL(blob)
+                    // trigger download
+                    const parts = (urlToFetch || '').split('/')
+                    const name = parts[parts.length - 1] || `resume_${Date.now()}`
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = name
+                    document.body.appendChild(a)
+                    a.click()
+                    a.remove()
+                    // open in new tab for viewing
+                    window.open(url, '_blank')
+                    // revoke after some time
+                    setTimeout(() => URL.revokeObjectURL(url), 60 * 1000)
+                  } catch (e) {
+                    console.error('Failed to download/view resume', e)
+                    alert('Failed to download or view resume')
+                  }
+                }}
+                style={{ fontSize: 13, background: 'none', border: 'none', color: 'var(--primary)', textDecoration: 'underline', cursor: 'pointer' }}
+              >
+                View / Download
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="field-row">
@@ -354,6 +449,14 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
             <textarea value={newRemark} onChange={(e) => setNewRemark(e.target.value)} placeholder="Add a new remark (this will be appended to history)" />
           </div>
         ) : null}
+        <div className="field">
+          <label>Client feedback</label>
+          {isClient ? (
+            <textarea value={form.client_feedback || ''} onChange={(e) => setForm({ ...form, client_feedback: e.target.value })} placeholder="Enter feedback for the client" />
+          ) : (
+            <textarea value={form.client_feedback || ''} readOnly style={{ background: 'var(--bg)', color: 'var(--text)' }} />
+          )}
+        </div>
         <div className="field">
           <label>F2F interview availability</label>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

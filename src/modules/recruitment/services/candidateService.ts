@@ -99,6 +99,8 @@ export const CandidateService = {
         intstatus: c.intstatus,
         selstatus: normalizeSelectionStatus(c.selstatus),
         remarks: c.remarks,
+        client_feedback: c.client_feedback || null,
+        resume_url: c.resume_url || c.resume || null,
         applied_job_id: c.applied_job_id,
         applied_job_title: c.applied_job_title,
         f2f: c.f2f
@@ -132,6 +134,8 @@ export const CandidateService = {
         intstatus: c.intstatus,
         selstatus: normalizeSelectionStatus(c.selstatus),
         remarks: c.remarks,
+        client_feedback: c.client_feedback || null,
+        resume_url: c.resume_url || c.resume || null,
         applied_job_id: c.applied_job_id || c.job_id || null,
         applied_job_title: c.applied_job_title || c.job_title || c.job_role || c.role || null,
         f2f: c.f2f
