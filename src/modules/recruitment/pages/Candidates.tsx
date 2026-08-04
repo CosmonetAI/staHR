@@ -25,6 +25,7 @@ import {
 import * as XLSX from 'xlsx'
 import { JobService } from '../services/jobService'
 import { useAuth } from '../../../hooks/useAuth'
+import { supabase } from '../../../supabase/supabaseClient'
 
 export default function Candidates() {
   const { user, isClient } = useAuth()
@@ -61,6 +62,7 @@ export default function Candidates() {
   const [importErrors, setImportErrors] = useState<any[]>([])
   const [openFilter, setOpenFilter] = useState<string | null>(null)
   const [jobsMap, setJobsMap] = useState<Record<string, any>>({})
+  const [clientFeedbackEdits, setClientFeedbackEdits] = useState<Record<string,string>>({})
 
   // load jobs once into a lookup map keyed by job_id, job_ref, and id
   React.useEffect(() => {
@@ -112,7 +114,7 @@ export default function Candidates() {
           }
         }
         setEditingId(null)
-        setForm({ role: title || '', name: '', date: new Date().toISOString().slice(0, 10), exp: '', cctc: '', ectc: '', email: '', phone: '', linkedin: '', location: '', np: '', availability: '', intstatus: '', selstatus: 'progress', remarks: '', f2f: '', applied_job_id: resolvedJobId || jobRef || '', job_id: resolvedJobId || jobRef || '' })
+        setForm({ role: title || '', name: '', date: new Date().toISOString().slice(0, 10), exp: '', cctc: '', ectc: '', email: '', phone: '', linkedin: '', location: '', np: '', availability: '', intstatus: '', selstatus: 'progress', remarks: '', f2f: '', client_feedback: '', applied_job_id: resolvedJobId || jobRef || '', job_id: resolvedJobId || jobRef || '' })
         setDrawerOpen(true)
       })()
     }
@@ -516,7 +518,7 @@ export default function Candidates() {
                       <button className="btn btn-ghost" onClick={() => setShowUpload(true)}>Upload CSV/Excel</button>
                       <button className="btn btn-primary" onClick={() => {
                         setEditingId(null)
-                        setForm({ role: '', name: '', date: new Date().toISOString().slice(0, 10), exp: '', cctc: '', ectc: '', email: '', phone: '', linkedin: '', location: '', np: '', availability: '', intstatus: '', selstatus: 'progress', remarks: '', f2f: '' })
+                        setForm({ role: '', name: '', date: new Date().toISOString().slice(0, 10), exp: '', cctc: '', ectc: '', email: '', phone: '', linkedin: '', location: '', np: '', availability: '', intstatus: '', selstatus: 'progress', remarks: '', f2f: '', client_feedback: '' })
                         setDrawerOpen(true)
                       }}>+ Add Candidate</button>
                     </>
@@ -667,6 +669,59 @@ export default function Candidates() {
                                   </div>
                                 </div>
                                 <div className="profile-field">
+                                  <FaStickyNote />
+                                  <div>
+                                    <label>Resume</label>
+                                    <div>
+                                        {c.resume_url ? (
+                                          <button
+                                            type="button"
+                                            onClick={async () => {
+                                                  try {
+                                                    let urlToFetch = c.resume_url || ''
+                                                    if (!urlToFetch && c.resume_path) {
+                                                      try {
+                                                        const parts = String(c.resume_path || '').split('/')
+                                                        const bucket = parts[0]
+                                                        const path = parts.slice(1).join('/')
+                                                        if (bucket && path) {
+                                                          const publicData = await supabase.storage.from(bucket).getPublicUrl(path)
+                                                          urlToFetch = publicData?.data?.publicUrl || publicData?.data?.publicURL || publicData?.data?.public_url || ''
+                                                        }
+                                                      } catch (e) {
+                                                        // ignore
+                                                      }
+                                                    }
+                                                    if (!urlToFetch) throw new Error('No resume URL available')
+                                                    const resp = await fetch(urlToFetch)
+                                                    if (!resp.ok) throw new Error('Failed to fetch resume')
+                                                    const blob = await resp.blob()
+                                                    const url = URL.createObjectURL(blob)
+                                                    const parts = (urlToFetch || '').split('/')
+                                                    const name = parts[parts.length - 1] || `resume_${Date.now()}`
+                                                    const a = document.createElement('a')
+                                                    a.href = url
+                                                    a.download = name
+                                                    document.body.appendChild(a)
+                                                    a.click()
+                                                    a.remove()
+                                                    window.open(url, '_blank')
+                                                    setTimeout(() => URL.revokeObjectURL(url), 60 * 1000)
+                                                  } catch (e) { console.error(e); addToast('Failed to download resume', 'error') }
+                                                }}
+                                            style={{ background: 'none', border: 'none', color: 'var(--primary)', textDecoration: 'underline', cursor: 'pointer' }}
+                                          >
+                                            View / Download
+                                          </button>
+                                        ) : c.resume_path ? (
+                                          <span style={{ fontSize: 13 }}>{c.resume_path}</span>
+                                        ) : (
+                                          <span style={{ color: 'var(--muted)' }}>No resume</span>
+                                        )}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="profile-field">
                                   <FaMapMarkerAlt />
                                   <div>
                                     <label>Location</label>
@@ -715,6 +770,30 @@ export default function Candidates() {
                                 <div className="candidate-note-card">
                                   <div className="note-card-head"><FaStickyNote /><label>Remarks</label></div>
                                   <div style={{ whiteSpace: 'pre-wrap' }}>{c.remarks || '-'}</div>
+                                  <div style={{ height: 12 }} />
+                                  <div className="note-card-head"><FaPen /><label>Client feedback</label></div>
+                                  {isClient ? (
+                                    <>
+                                      <textarea
+                                        value={clientFeedbackEdits[c.id] ?? (c.client_feedback || '')}
+                                        onChange={(e) => setClientFeedbackEdits(prev => ({ ...prev, [c.id]: e.target.value }))}
+                                        style={{ minHeight: 80, width: '100%' }}
+                                      />
+                                      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                                        <button className="btn btn-ghost" onClick={() => setClientFeedbackEdits(prev => ({ ...prev, [c.id]: c.client_feedback || '' }))}>Reset</button>
+                                        <button className="btn btn-primary" onClick={async () => {
+                                          try {
+                                            const toSave = clientFeedbackEdits[c.id] ?? (c.client_feedback || '')
+                                            const updated = await CandidateService.update(String(c.id), { client_feedback: toSave })
+                                            setRows(prev => prev.map(r => r.id === c.id ? ({ ...r, client_feedback: updated?.client_feedback ?? toSave }) : r))
+                                            addToast('Client feedback saved', 'success')
+                                          } catch (e) { console.error(e); addToast('Failed to save feedback', 'error') }
+                                        }}>Save</button>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <div style={{ whiteSpace: 'pre-wrap' }}>{c.client_feedback || '-'}</div>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -783,7 +862,7 @@ export default function Candidates() {
             if (!importPreview.length) return
             try {
               const inserted = await CandidateService.createMany(importPreview)
-              const newRows = inserted.map((p: any) => ({ id: p.id, name: p.name, email: p.email, phone: p.phone, exp: p.experience ? String(p.experience) : '', cctc: p.current_ctc ? String(p.current_ctc) : '', ectc: p.expected_ctc ? String(p.expected_ctc) : '', location: p.current_location || '', np: p.notice_period || '', selstatus: p.selstatus || 'progress', role: p.job_role || p.role || '', linkedin: p.linkedin || '', created_at: p.created_at, updated_at: p.updated_at }))
+              const newRows = inserted.map((p: any) => ({ id: p.id, name: p.name, email: p.email, phone: p.phone, exp: p.experience ? String(p.experience) : '', cctc: p.current_ctc ? String(p.current_ctc) : '', ectc: p.expected_ctc ? String(p.expected_ctc) : '', location: p.current_location || '', np: p.notice_period || '', selstatus: p.selstatus || 'progress', role: p.job_role || p.role || '', linkedin: p.linkedin || '', client_feedback: p.client_feedback || '', created_at: p.created_at, updated_at: p.updated_at }))
               setRows(prev => [...newRows, ...prev])
               addToast(`Imported ${newRows.length} candidates`, 'success')
               setImportPreview([])

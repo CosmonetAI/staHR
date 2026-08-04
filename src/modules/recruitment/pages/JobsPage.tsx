@@ -6,6 +6,8 @@ import { CandidateService } from '../services/candidateService'
 import { JobService } from '../services/jobService'
 import { useAuth } from '../../../hooks/useAuth'
 import ClientService from '../services/clientService'
+import JobDescriptionUploader from '../../../components/JobDescriptionUploader/JobDescriptionUploader'
+import { ParsedJobDescription } from '../../../types/job'
 
 export default function JobsPage() {
   const { user, isClient } = useAuth()
@@ -74,6 +76,7 @@ export default function JobsPage() {
   }, [])
   const [selectedJob, setSelectedJob] = useState<any | null>(null)
   const [newJob, setNewJob] = useState<any | null>(null)
+  const [autoFilledFields, setAutoFilledFields] = useState<string[]>([])
   const [applications, setApplications] = useState<any[]>([])
   const addToast = useToast()
   const candidates = candidatesData?.data || []
@@ -118,6 +121,77 @@ export default function JobsPage() {
 
   function closeNewJob() {
     setNewJob(null)
+    setAutoFilledFields([])
+  }
+
+  function applyParsedToNewJob(data: ParsedJobDescription) {
+    if (!newJob) return
+    const mapping: Record<string, string> = {
+      jobTitle: 'title',
+      department: 'department',
+      location: 'location',
+      numberOfPositions: 'openings',
+      summary: 'summary',
+      jobDescription: 'desc',
+      primarySkills: 'technical_skills',
+      responsibilities: 'responsibilities',
+      qualifications: 'qualifications',
+      preferredSkills: 'preferred_skills',
+      // experience handled separately
+      employmentType: 'employment_type',
+      workMode: 'work_mode'
+    }
+
+    const toSet: Record<string, any> = {}
+    const conflicts: string[] = []
+
+    Object.keys(mapping).forEach((k) => {
+      const val = (data as any)[k]
+      if (val === undefined || val === null) return
+      const dest = mapping[k]
+      if (Array.isArray(val)) {
+        // join arrays into comma separated for technical_skills, preferred_skills
+        if (dest === 'technical_skills' || dest === 'preferred_skills') toSet[dest] = val.join(', ')
+        else if (dest === 'responsibilities') toSet[dest] = val.join('\n')
+        else toSet[dest] = val.join(', ')
+      } else {
+        toSet[dest] = val
+      }
+      if (newJob[dest] && String(newJob[dest]).trim() !== '') conflicts.push(dest)
+    })
+
+    // experience
+    if (data.experience) {
+      if (typeof data.experience.minimum === 'number') {
+        toSet.experience_min = data.experience.minimum
+        if (newJob.experience_min && String(newJob.experience_min).trim() !== '') conflicts.push('experience_min')
+      }
+      if (typeof data.experience.maximum === 'number') {
+        toSet.experience_max = data.experience.maximum
+        if (newJob.experience_max && String(newJob.experience_max).trim() !== '') conflicts.push('experience_max')
+      }
+    }
+
+    // openings
+    if (typeof data.numberOfPositions === 'number' && (!newJob.openings || String(newJob.openings).trim() === '')) {
+      toSet.openings = data.numberOfPositions
+    }
+
+    if (conflicts.length > 0) {
+      const ok = window.confirm(`The following fields have existing values and will be overwritten: ${conflicts.join(', ')}. Overwrite?`)
+      if (!ok) {
+        // apply only non-conflicting
+        Object.keys(toSet).forEach((k) => { if (!conflicts.includes(k)) newJob[k] = toSet[k] })
+        setNewJob({ ...newJob })
+        setAutoFilledFields(Object.keys(toSet).filter((k) => !conflicts.includes(k)))
+        return
+      }
+    }
+
+    // apply all
+    Object.assign(newJob, toSet)
+    setNewJob({ ...newJob })
+    setAutoFilledFields(Object.keys(toSet))
   }
 
   async function createJob() {
@@ -377,22 +451,25 @@ export default function JobsPage() {
               <button className="drawer-close" onClick={closeNewJob}>x</button>
             </div>
             <div className="drawer-body" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+              <div style={{ marginBottom: 12 }}>
+                <JobDescriptionUploader onParsed={(data: ParsedJobDescription) => applyParsedToNewJob(data)} />
+              </div>
                 <div className="field-row">
                 <div className="field">
                   <label>Job title *</label>
-                  <input required placeholder="e.g. Software Engineer" value={newJob.title} onChange={(e) => setNewJob({ ...newJob, title: e.target.value })} />
+                  <input required placeholder="e.g. Software Engineer" value={newJob.title} onChange={(e) => setNewJob({ ...newJob, title: e.target.value })} style={autoFilledFields.includes('title') ? { outline: '2px solid #1976d2' } : undefined} />
                   {jobErrors.title && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{jobErrors.title}</div>}
                 </div>
                 <div className="field">
                   <label>Location *</label>
-                  <input required placeholder="e.g. Bengaluru, India" value={newJob.location} onChange={(e) => setNewJob({ ...newJob, location: e.target.value })} />
+                  <input required placeholder="e.g. Bengaluru, India" value={newJob.location} onChange={(e) => setNewJob({ ...newJob, location: e.target.value })} style={autoFilledFields.includes('location') ? { outline: '2px solid #1976d2' } : undefined} />
                   {jobErrors.location && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{jobErrors.location}</div>}
                 </div>
               </div>
               <div className="field-row">
                 <div className="field">
                   <label>Department</label>
-                  <input placeholder="e.g. Engineering" value={newJob.department || ''} onChange={(e) => setNewJob({ ...newJob, department: e.target.value })} />
+                  <input placeholder="e.g. Engineering" value={newJob.department || ''} onChange={(e) => setNewJob({ ...newJob, department: e.target.value })} style={autoFilledFields.includes('department') ? { outline: '2px solid #1976d2' } : undefined} />
                 </div>
                 <div className="field">
                   <label>Client</label>
@@ -409,7 +486,7 @@ export default function JobsPage() {
               <div className="field-row">
                 <div className="field">
                   <label>Employment type</label>
-                  <select value={newJob.employment_type || ''} onChange={(e) => setNewJob({ ...newJob, employment_type: e.target.value })}>
+                  <select value={newJob.employment_type || ''} onChange={(e) => setNewJob({ ...newJob, employment_type: e.target.value })} style={autoFilledFields.includes('employment_type') ? { outline: '2px solid #1976d2' } : undefined}>
                     <option value="">— select —</option>
                     <option value="Full-Time">Full-Time</option>
                     <option value="Part-Time">Part-Time</option>
@@ -419,7 +496,7 @@ export default function JobsPage() {
                 </div>
                 <div className="field">
                   <label>Work mode</label>
-                  <select value={newJob.work_mode || ''} onChange={(e) => setNewJob({ ...newJob, work_mode: e.target.value })}>
+                  <select value={newJob.work_mode || ''} onChange={(e) => setNewJob({ ...newJob, work_mode: e.target.value })} style={autoFilledFields.includes('work_mode') ? { outline: '2px solid #1976d2' } : undefined}>
                     <option value="">— select —</option>
                     <option value="Onsite">Onsite</option>
                     <option value="Hybrid">Hybrid</option>
@@ -430,17 +507,17 @@ export default function JobsPage() {
               <div className="field-row">
                 <div className="field">
                   <label>Experience (min)</label>
-                  <input placeholder="Min years (e.g. 2)" type="number" min="0" value={newJob.experience_min || ''} onChange={(e) => setNewJob({ ...newJob, experience_min: Number(e.target.value) || null })} />
+                  <input placeholder="Min years (e.g. 2)" type="number" min="0" value={newJob.experience_min || ''} onChange={(e) => setNewJob({ ...newJob, experience_min: Number(e.target.value) || null })} style={autoFilledFields.includes('experience_min') ? { outline: '2px solid #1976d2' } : undefined} />
                 </div>
                 <div className="field">
                   <label>Experience (max)</label>
-                  <input placeholder="Max years (e.g. 5)" type="number" min="0" value={newJob.experience_max || ''} onChange={(e) => setNewJob({ ...newJob, experience_max: Number(e.target.value) || null })} />
+                  <input placeholder="Max years (e.g. 5)" type="number" min="0" value={newJob.experience_max || ''} onChange={(e) => setNewJob({ ...newJob, experience_max: Number(e.target.value) || null })} style={autoFilledFields.includes('experience_max') ? { outline: '2px solid #1976d2' } : undefined} />
                 </div>
               </div>
               <div className="field-row">
                 <div className="field">
                   <label>Openings *</label>
-                  <input required placeholder="Number of openings" type="number" min="1" value={newJob.openings} onChange={(e) => setNewJob({ ...newJob, openings: e.target.value })} />
+                  <input required placeholder="Number of openings" type="number" min="1" value={newJob.openings} onChange={(e) => setNewJob({ ...newJob, openings: e.target.value })} style={autoFilledFields.includes('openings') ? { outline: '2px solid #1976d2' } : undefined} />
                   {jobErrors.openings && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{jobErrors.openings}</div>}
                 </div>
                 <div className="field">
@@ -457,25 +534,25 @@ export default function JobsPage() {
               </div>
               <div className="field">
                 <label>Summary</label>
-                <textarea placeholder="Brief summary of the role" value={newJob.summary || newJob.desc || ''} onChange={(e) => setNewJob({ ...newJob, summary: e.target.value, desc: e.target.value })} />
+                <textarea placeholder="Brief summary of the role" value={newJob.summary || newJob.desc || ''} onChange={(e) => setNewJob({ ...newJob, summary: e.target.value, desc: e.target.value })} style={autoFilledFields.includes('summary') ? { outline: '2px solid #1976d2' } : undefined} />
               </div>
               <div className="field">
                 <label>Responsibilities</label>
-                <textarea placeholder="Key responsibilities (one per line)" value={newJob.responsibilities || ''} onChange={(e) => setNewJob({ ...newJob, responsibilities: e.target.value })} />
+                <textarea placeholder="Key responsibilities (one per line)" value={newJob.responsibilities || ''} onChange={(e) => setNewJob({ ...newJob, responsibilities: e.target.value })} style={autoFilledFields.includes('responsibilities') ? { outline: '2px solid #1976d2' } : undefined} />
               </div>
               <div className="field-row">
                 <div className="field">
                   <label>Technical skills (comma separated)</label>
-                  <input placeholder="e.g. React, TypeScript, Node.js" value={newJob.technical_skills || ''} onChange={(e) => setNewJob({ ...newJob, technical_skills: e.target.value })} />
+                  <input placeholder="e.g. React, TypeScript, Node.js" value={newJob.technical_skills || ''} onChange={(e) => setNewJob({ ...newJob, technical_skills: e.target.value })} style={autoFilledFields.includes('technical_skills') ? { outline: '2px solid #1976d2' } : undefined} />
                 </div>
                 <div className="field">
                   <label>Qualifications</label>
-                  <input placeholder="e.g. B.E. in Computer Science" value={newJob.qualifications || ''} onChange={(e) => setNewJob({ ...newJob, qualifications: e.target.value })} />
+                  <input placeholder="e.g. B.E. in Computer Science" value={newJob.qualifications || ''} onChange={(e) => setNewJob({ ...newJob, qualifications: e.target.value })} style={autoFilledFields.includes('qualifications') ? { outline: '2px solid #1976d2' } : undefined} />
                 </div>
               </div>
               <div className="field">
                 <label>Preferred skills / Nice to have</label>
-                <input placeholder="Preferred skills (comma separated)" value={newJob.preferred_skills || ''} onChange={(e) => setNewJob({ ...newJob, preferred_skills: e.target.value })} />
+                <input placeholder="Preferred skills (comma separated)" value={newJob.preferred_skills || ''} onChange={(e) => setNewJob({ ...newJob, preferred_skills: e.target.value })} style={autoFilledFields.includes('preferred_skills') ? { outline: '2px solid #1976d2' } : undefined} />
               </div>
               
             </div>

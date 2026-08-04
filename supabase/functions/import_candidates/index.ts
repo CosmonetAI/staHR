@@ -340,7 +340,9 @@ serve(async (req) => {
         })(),
         confirmed_availability: (c.confirmed_availability || c.confirmed_availability_raw || ''),
         applied_job_id: c._job_id || c.applied_job_id || c.job_id || null,
-        applied_job_title: c.applied_job_title || c.job_title || c.job_role || c.role || null
+        applied_job_title: c.applied_job_title || c.job_title || c.job_role || c.role || null,
+        resume_url: c.resume_url || c.resume || null,
+        resume_path: c.resume_path || null
       })
 
       const candidatesWithUpload = candidates.map((c: any) => ({ ...allowed(c), ...(up ? { upload_id: up.id } : {}) }))
@@ -359,9 +361,41 @@ serve(async (req) => {
 
     // PUT/PATCH - update a candidate by id
     if (req.method === 'PUT' || req.method === 'PATCH') {
-      if (isClientUser) return new Response(JSON.stringify({ error: 'Forbidden: clients have read-only access' }), { status: 403, headers: corsHeaders })
       const id = body.id || body.candidate?.id
       const updates = body.updates || body.candidate || {}
+      // If requester is a client user, allow only updating `client_feedback` and only for candidates belonging to their jobs
+      if (isClientUser) {
+        // only allow when updates contains only client_feedback
+        const keys = Object.keys(updates || {})
+        const allowedKeysForClient = ['client_feedback']
+        const onlyAllowed = keys.length > 0 && keys.every(k => allowedKeysForClient.includes(k))
+        if (!onlyAllowed) return new Response(JSON.stringify({ error: 'Forbidden: clients can only update client_feedback' }), { status: 403, headers: corsHeaders })
+        // verify the candidate belongs to one of the client's jobs
+        if (!requestClientId) return new Response(JSON.stringify({ error: 'Forbidden: client identity not resolved' }), { status: 403, headers: corsHeaders })
+        // fetch candidate to check applied_job_id
+        const candRes = await sb.from('candidates').select('applied_job_id').eq('id', id).single()
+        if (candRes.error) return new Response(JSON.stringify({ error: candRes.error.message || candRes.error }), { status: 500, headers: corsHeaders })
+        const appliedJobId = candRes.data?.applied_job_id || null
+        if (appliedJobId) {
+          const { data: jobsForClient, error: jobsErr } = await sb.from('jobs').select('id').eq('client_id', requestClientId)
+          if (jobsErr) return new Response(JSON.stringify({ error: jobsErr.message || jobsErr }), { status: 500, headers: corsHeaders })
+          const jobIds = (jobsForClient || []).map((j: any) => j.id)
+          if (!jobIds.includes(appliedJobId)) return new Response(JSON.stringify({ error: 'Forbidden: candidate does not belong to your client' }), { status: 403, headers: corsHeaders })
+        } else {
+          // candidate not assigned to a job - deny
+          return new Response(JSON.stringify({ error: 'Forbidden: candidate not assignable by client' }), { status: 403, headers: corsHeaders })
+        }
+        // normalize selection status not relevant here; proceed to update only client_feedback using admin client
+        const { data, error } = await (sbAdmin || sb).from('candidates').update({ client_feedback: updates.client_feedback }).eq('id', id).select().single()
+        if (error) return new Response(JSON.stringify({ error: error.message || error }), { status: 500, headers: corsHeaders })
+        return new Response(JSON.stringify({ updated: data }), { status: 200, headers: corsHeaders })
+      }
+
+      // non-client users continue with regular update path
+      
+      
+      
+      
       if (!id) return new Response(JSON.stringify({ error: 'Missing id for update' }), { status: 400, headers: corsHeaders })
       // normalize selection status
       if (updates.selstatus) updates.selstatus = normalizeSelectionStatus(updates.selstatus)
