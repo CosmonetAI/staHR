@@ -152,13 +152,12 @@ export const CandidateService = {
   async update(id: string, candidate: Partial<Candidate>) {
     const normId = String(id || '').replace(/[{}]/g, '').trim()
     if (!normId) throw new Error('Invalid id')
-    const payloadCandidate = {
-      ...candidate,
-      ...(candidate.selstatus ? { selstatus: normalizeSelectionStatus(candidate.selstatus) } : {})
-    }
+    const payloadCandidate: any = { ...candidate }
+    if (payloadCandidate.selstatus) payloadCandidate.selstatus = normalizeSelectionStatus(payloadCandidate.selstatus)
     try { console.debug('CandidateService.update', { id: normId, candidate: payloadCandidate }) } catch (e) {}
     try {
-      const res = await postEdge('/import_candidates', { id: normId, candidate: payloadCandidate }, 'PATCH')
+      // send updates under `updates` key so edge function handles it consistently
+      const res = await postEdge('/import_candidates', { id: normId, updates: payloadCandidate }, 'PATCH')
       if (res && res.updated && res.updated.length) return res.updated[0]
       if (res && res.updated) return res.updated
       if (Array.isArray(res)) return res[0] || null
