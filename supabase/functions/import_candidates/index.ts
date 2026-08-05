@@ -365,17 +365,17 @@ serve(async (req) => {
       const updates = body.updates || body.candidate || {}
       // If requester is a client user, allow only updating `client_feedback` and only for candidates belonging to their jobs
       if (isClientUser) {
-        // only allow when updates contains only client_feedback
+        // only allow either initial client_feedback set or append via append_client_feedback
         const keys = Object.keys(updates || {})
-        const allowedKeysForClient = ['client_feedback']
-        const onlyAllowed = keys.length > 0 && keys.every(k => allowedKeysForClient.includes(k))
-        if (!onlyAllowed) return new Response(JSON.stringify({ error: 'Forbidden: clients can only update client_feedback' }), { status: 403, headers: corsHeaders })
-        // verify the candidate belongs to one of the client's jobs
+        if (keys.length !== 1 || (keys[0] !== 'client_feedback' && keys[0] !== 'append_client_feedback')) {
+          return new Response(JSON.stringify({ error: 'Forbidden: clients can only set or append client_feedback' }), { status: 403, headers: corsHeaders })
+        }
         if (!requestClientId) return new Response(JSON.stringify({ error: 'Forbidden: client identity not resolved' }), { status: 403, headers: corsHeaders })
-        // fetch candidate to check applied_job_id
-        const candRes = await sb.from('candidates').select('applied_job_id').eq('id', id).single()
+        // fetch candidate to check applied_job_id and existing feedback
+        const candRes = await sb.from('candidates').select('applied_job_id, client_feedback').eq('id', id).single()
         if (candRes.error) return new Response(JSON.stringify({ error: candRes.error.message || candRes.error }), { status: 500, headers: corsHeaders })
         const appliedJobId = candRes.data?.applied_job_id || null
+        const existingFeedback = candRes.data?.client_feedback || ''
         if (appliedJobId) {
           const { data: jobsForClient, error: jobsErr } = await sb.from('jobs').select('id').eq('client_id', requestClientId)
           if (jobsErr) return new Response(JSON.stringify({ error: jobsErr.message || jobsErr }), { status: 500, headers: corsHeaders })
@@ -385,10 +385,27 @@ serve(async (req) => {
           // candidate not assigned to a job - deny
           return new Response(JSON.stringify({ error: 'Forbidden: candidate not assignable by client' }), { status: 403, headers: corsHeaders })
         }
-        // normalize selection status not relevant here; proceed to update only client_feedback using admin client
-        const { data, error } = await (sbAdmin || sb).from('candidates').update({ client_feedback: updates.client_feedback }).eq('id', id).select().single()
-        if (error) return new Response(JSON.stringify({ error: error.message || error }), { status: 500, headers: corsHeaders })
-        return new Response(JSON.stringify({ updated: data }), { status: 200, headers: corsHeaders })
+
+        if (keys[0] === 'client_feedback') {
+          // initial set only when no existing feedback
+          if (existingFeedback && String(existingFeedback).trim() !== '') {
+            return new Response(JSON.stringify({ error: 'Forbidden: initial client feedback already submitted' }), { status: 403, headers: corsHeaders })
+          }
+          const { data, error } = await (sbAdmin || sb).from('candidates').update({ client_feedback: updates.client_feedback }).eq('id', id).select().single()
+          if (error) return new Response(JSON.stringify({ error: error.message || error }), { status: 500, headers: corsHeaders })
+          return new Response(JSON.stringify({ updated: data }), { status: 200, headers: corsHeaders })
+        }
+
+        // append flow
+        if (keys[0] === 'append_client_feedback') {
+          const newText = String(updates.append_client_feedback || '').trim()
+          if (!newText) return new Response(JSON.stringify({ error: 'Missing feedback to append' }), { status: 400, headers: corsHeaders })
+          const ts = new Date().toISOString().slice(0, 19).replace('T', ' ')
+          const appended = existingFeedback ? `${existingFeedback}\n[${ts}] ${newText}` : `[${ts}] ${newText}`
+          const { data, error } = await (sbAdmin || sb).from('candidates').update({ client_feedback: appended }).eq('id', id).select().single()
+          if (error) return new Response(JSON.stringify({ error: error.message || error }), { status: 500, headers: corsHeaders })
+          return new Response(JSON.stringify({ updated: data }), { status: 200, headers: corsHeaders })
+        }
       }
 
       // non-client users continue with regular update path

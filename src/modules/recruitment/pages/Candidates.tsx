@@ -773,24 +773,51 @@ export default function Candidates() {
                                   <div style={{ height: 12 }} />
                                   <div className="note-card-head"><FaPen /><label>Client feedback</label></div>
                                   {isClient ? (
-                                    <>
-                                      <textarea
-                                        value={clientFeedbackEdits[c.id] ?? (c.client_feedback || '')}
-                                        onChange={(e) => setClientFeedbackEdits(prev => ({ ...prev, [c.id]: e.target.value }))}
-                                        style={{ minHeight: 80, width: '100%' }}
-                                      />
-                                      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                                        <button className="btn btn-ghost" onClick={() => setClientFeedbackEdits(prev => ({ ...prev, [c.id]: c.client_feedback || '' }))}>Reset</button>
-                                        <button className="btn btn-primary" onClick={async () => {
-                                          try {
-                                            const toSave = clientFeedbackEdits[c.id] ?? (c.client_feedback || '')
-                                            const updated = await CandidateService.update(String(c.id), { client_feedback: toSave })
-                                            setRows(prev => prev.map(r => r.id === c.id ? ({ ...r, client_feedback: updated?.client_feedback ?? toSave }) : r))
-                                            addToast('Client feedback saved', 'success')
-                                          } catch (e) { console.error(e); addToast('Failed to save feedback', 'error') }
-                                        }}>Save</button>
-                                      </div>
-                                    </>
+                                    (c.client_feedback && String(c.client_feedback).trim()) ? (
+                                      <>
+                                        <textarea value={c.client_feedback || ''} readOnly style={{ minHeight: 80, width: '100%' }} />
+                                        <div style={{ marginTop: 8 }} />
+                                        <label>Add client feedback</label>
+                                        <textarea
+                                          value={clientFeedbackEdits[c.id] ?? ''}
+                                          onChange={(e) => setClientFeedbackEdits(prev => ({ ...prev, [c.id]: e.target.value }))}
+                                          style={{ minHeight: 80, width: '100%' }}
+                                        />
+                                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                                          <button className="btn btn-ghost" onClick={() => setClientFeedbackEdits(prev => ({ ...prev, [c.id]: '' }))}>Reset</button>
+                                          <button className="btn btn-primary" onClick={async () => {
+                                            try {
+                                              const toAppend = String(clientFeedbackEdits[c.id] || '').trim()
+                                              if (!toAppend) { addToast('Enter feedback to append', 'info'); return }
+                                              const updated = await CandidateService.update(String(c.id), { append_client_feedback: toAppend })
+                                              setRows(prev => prev.map(r => r.id === c.id ? ({ ...r, client_feedback: updated?.client_feedback ?? (r.client_feedback + '\n' + toAppend) }) : r))
+                                              setClientFeedbackEdits(prev => ({ ...prev, [c.id]: '' }))
+                                              addToast('Client feedback appended', 'success')
+                                            } catch (e) { console.error(e); addToast('Failed to append feedback', 'error') }
+                                          }}>Append</button>
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <textarea
+                                          value={clientFeedbackEdits[c.id] ?? (c.client_feedback || '')}
+                                          onChange={(e) => setClientFeedbackEdits(prev => ({ ...prev, [c.id]: e.target.value }))}
+                                          style={{ minHeight: 80, width: '100%' }}
+                                        />
+                                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                                          <button className="btn btn-ghost" onClick={() => setClientFeedbackEdits(prev => ({ ...prev, [c.id]: c.client_feedback || '' }))}>Reset</button>
+                                          <button className="btn btn-primary" onClick={async () => {
+                                            try {
+                                              const toSave = clientFeedbackEdits[c.id] ?? (c.client_feedback || '')
+                                              if (!String(toSave || '').trim()) { addToast('Enter feedback', 'info'); return }
+                                              const updated = await CandidateService.update(String(c.id), { client_feedback: toSave })
+                                              setRows(prev => prev.map(r => r.id === c.id ? ({ ...r, client_feedback: updated?.client_feedback ?? toSave }) : r))
+                                              addToast('Client feedback saved', 'success')
+                                            } catch (e) { console.error(e); addToast('Failed to save feedback', 'error') }
+                                          }}>Save</button>
+                                        </div>
+                                      </>
+                                    )
                                   ) : (
                                     <div style={{ whiteSpace: 'pre-wrap' }}>{c.client_feedback || '-'}</div>
                                   )}

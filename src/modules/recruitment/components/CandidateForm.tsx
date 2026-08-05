@@ -3,6 +3,8 @@ import FileUpload from '../../../components/FileUpload'
 import { JobService } from '../services/jobService'
 import { supabase } from '../../../supabase/supabaseClient'
 import { useAuth } from '../../../hooks/useAuth'
+import { CandidateService } from '../services/candidateService'
+import { useToast } from '../../../components/ToastProvider'
 
 type Props = {
   form: any
@@ -84,6 +86,8 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
   const [resumeFile, setResumeFile] = React.useState<File | null>(null)
   const [resumeUploading, setResumeUploading] = React.useState(false)
   const [resumeUrl, setResumeUrl] = React.useState<string>(() => String(form.resume_url || form.resume || ''))
+  const [newClientFeedback, setNewClientFeedback] = React.useState('')
+  const addToast = useToast()
 
   const clearError = (field: string) => {
   setErrors(prev => {
@@ -452,7 +456,38 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
         <div className="field">
           <label>Client feedback</label>
           {isClient ? (
-            <textarea value={form.client_feedback || ''} onChange={(e) => setForm({ ...form, client_feedback: e.target.value })} placeholder="Enter feedback for the client" />
+            form.client_feedback && String(form.client_feedback).trim() ? (
+              <>
+                <textarea value={form.client_feedback || ''} readOnly style={{ background: 'var(--bg)', color: 'var(--text)', minHeight: 100 }} />
+                <div style={{ marginTop: 8 }} />
+                <label>Add client feedback</label>
+                <textarea value={newClientFeedback} onChange={(e) => setNewClientFeedback(e.target.value)} placeholder="Add new feedback to append" style={{ minHeight: 80 }} />
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <button className="btn btn-ghost" onClick={() => setNewClientFeedback('')}>Reset</button>
+                  <button className="btn btn-primary" onClick={async () => {
+                    if (!editingId) {
+                      addToast('Cannot append feedback: not editing candidate', 'error')
+                      return
+                    }
+                    const text = String(newClientFeedback || '').trim()
+                    if (!text) { addToast('Enter feedback to append', 'info'); return }
+                    try {
+                      const updated = await CandidateService.update(String(editingId), { append_client_feedback: text })
+                      if (updated) {
+                        setForm(updated)
+                        setNewClientFeedback('')
+                        addToast('Client feedback appended', 'success')
+                      }
+                    } catch (e) {
+                      console.error('Failed to append feedback', e)
+                      addToast('Failed to append feedback', 'error')
+                    }
+                  }}>Append feedback</button>
+                </div>
+              </>
+            ) : (
+              <textarea value={form.client_feedback || ''} onChange={(e) => setForm({ ...form, client_feedback: e.target.value })} placeholder="Enter feedback for the client" />
+            )
           ) : (
             <textarea value={form.client_feedback || ''} readOnly style={{ background: 'var(--bg)', color: 'var(--text)' }} />
           )}
