@@ -53,6 +53,8 @@ export default function Candidates() {
   const [lastChange, setLastChange] = useState<{id:string, prev:string} | null>(null)
   const [search, setSearch] = useState('')
   const [statusFilters, setStatusFilters] = useState<string[]>([])
+  const [dateFrom, setDateFrom] = useState<string>('')
+  const [dateTo, setDateTo] = useState<string>('')
   const [sortFields, setSortFields] = useState<string[]>(['date_desc'])
   const [showUpload, setShowUpload] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -278,6 +280,17 @@ export default function Candidates() {
       })
     }
     if (statusFilters.length) tmp = tmp.filter((d: any) => statusFilters.includes(normalizedStatus(d.selstatus)))
+    // Date range filter: candidate 'date' field is expected in yyyy-mm-dd or ISO format
+    if (dateFrom || dateTo) {
+      tmp = tmp.filter((d: any) => {
+        const raw = d.date || d.created_at || ''
+        const row = String(raw).slice(0, 10)
+        if (!row) return false
+        if (dateFrom && row < dateFrom) return false
+        if (dateTo && row > dateTo) return false
+        return true
+      })
+    }
     tmp = tmp.slice().sort((a: any, b: any) => {
       for (const sortField of sortFields) {
         let result = 0
@@ -291,7 +304,7 @@ export default function Candidates() {
       return 0
     })
     return tmp
-  }, [rows, selectedRoles, search, statusFilters, sortFields, jobsMap])
+  }, [rows, selectedRoles, search, statusFilters, sortFields, jobsMap, dateFrom, dateTo])
 
   // regenerate grouping from filtered rows so the UI shows filtered buckets
   const grouped = useMemo(() => {
@@ -410,8 +423,8 @@ export default function Candidates() {
   return (
     <div className="container">
       <h2>Candidates</h2>
-      <div className="toolbar candidates-toolbar" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-        <div className="search-box">
+      <div className="toolbar candidates-toolbar" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div className="search-box" style={{ flex: '1 1 280px', minWidth: 160 }}>
           <span>🔍</span>
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, location, or job id (e.g. job-4)…" />
         </div>
@@ -448,7 +461,32 @@ export default function Candidates() {
             ))}
           </div>}
         </div>
-        <button className="btn btn-ghost" onClick={() => { setSearch(''); setStatusFilters([]); setSortFields(['date_desc']); setSelectedRoles([]) }}>Clear</button>
+        <div className={`filter-menu ${openFilter === 'date' ? 'open' : ''}`}>
+          <button type="button" className="filter-summary" onClick={() => toggleFilterMenu('date')}>
+            {dateFrom || dateTo ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <FaCalendarAlt />
+                <span style={{ fontSize: 13 }}>{dateFrom || '—'} — {dateTo || '—'}</span>
+              </span>
+            ) : (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><FaCalendarAlt /> Date range</span>
+            )}
+          </button>
+          {openFilter === 'date' && (
+            <div className="filter-menu-panel">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} title="From date" />
+                <span style={{ opacity: 0.6 }}>—</span>
+                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} title="To date" />
+              </div>
+              <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                <button className="btn btn-ghost" onClick={() => { setDateFrom(''); setDateTo('') }}>Reset</button>
+                <button className="btn btn-primary" onClick={() => setOpenFilter(null)}>Apply</button>
+              </div>
+            </div>
+          )}
+        </div>
+        <button className="btn btn-ghost" onClick={() => { setSearch(''); setStatusFilters([]); setSortFields(['date_desc']); setSelectedRoles([]); setDateFrom(''); setDateTo('') }}>Clear</button>
       </div>
 
       {isLoading && <div className="card">Loading...</div>}
