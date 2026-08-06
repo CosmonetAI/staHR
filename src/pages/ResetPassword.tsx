@@ -285,14 +285,14 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
             <label className="field-label">New password</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input placeholder="Enter new password" type={showPassword ? 'text' : 'password'} {...register('password')} />
-              <button type="button" className="btn btn-ghost" onClick={() => setShowPassword(s => !s)} style={{ padding: '6px 8px' }}>{showPassword ? 'Hide' : 'Show'}</button>
+              <button type="button" className="show-pass-btn" onClick={() => setShowPassword(s => !s)} style={{ padding: '6px 8px' }}>{showPassword ? 'Hide' : 'Show'}</button>
             </div>
           </div>
           <div className="field" style={{ marginBottom: 12 }}>
             <label className="field-label">Confirm password</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input placeholder="Re-enter new password" type={showConfirm ? 'text' : 'password'} {...register('confirmPassword')} />
-              <button type="button" className="btn btn-ghost" onClick={() => setShowConfirm(s => !s)} style={{ padding: '6px 8px' }}>{showConfirm ? 'Hide' : 'Show'}</button>
+              <button type="button" className="show-pass-btn" onClick={() => setShowConfirm(s => !s)} style={{ padding: '6px 8px' }}>{showConfirm ? 'Hide' : 'Show'}</button>
             </div>
           </div>
           {newPwdError && <div className="field-error" style={{ marginBottom: 12 }}>{newPwdError}</div>}
