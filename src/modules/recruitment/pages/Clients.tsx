@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { FaThLarge, FaList } from 'react-icons/fa'
 import { useAuth } from '../../../hooks/useAuth'
 import ClientService from '../services/clientService'
 import { useToast } from '../../../components/ToastProvider'
@@ -10,6 +11,12 @@ export default function ClientsPage() {
   const [clients, setClients] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [editing, setEditing] = useState<any | null>(null)
+  const [viewMode, setViewMode] = useState<'row' | 'card'>('card')
+  const [search, setSearch] = useState('')
+  const [openFilter, setOpenFilter] = useState<string | null>(null)
+  const [hasEmail, setHasEmail] = useState<boolean | null>(null)
+  const [hasPhone, setHasPhone] = useState<boolean | null>(null)
+  const [hasNotes, setHasNotes] = useState<boolean | null>(null)
   const addToast = useToast()
 
   useEffect(() => {
@@ -25,6 +32,18 @@ export default function ClientsPage() {
     })()
     return () => { mounted = false }
   }, [])
+
+  const filteredClients = React.useMemo(() => {
+    let tmp = (clients || []).slice()
+    if (search) {
+      const s = String(search).toLowerCase()
+      tmp = tmp.filter(c => String(c.name || '').toLowerCase().includes(s) || String(c.email || '').toLowerCase().includes(s) || String(c.phone || '').toLowerCase().includes(s))
+    }
+    if (hasEmail !== null) tmp = tmp.filter(c => Boolean(c.email) === hasEmail)
+    if (hasPhone !== null) tmp = tmp.filter(c => Boolean(c.phone) === hasPhone)
+    if (hasNotes !== null) tmp = tmp.filter(c => Boolean(c.notes) === hasNotes)
+    return tmp
+  }, [clients, search, hasEmail, hasPhone, hasNotes])
 
   function openNew() { setEditing({ name: '', email: '', phone: '', notes: '' }) }
   function close() { setEditing(null) }
@@ -60,29 +79,85 @@ export default function ClientsPage() {
 
   return (
     <div className="container">
-      <div className="jobs-page-head">
-        <h2>Clients</h2>
-        <button className="btn btn-primary" onClick={openNew}>+ Onboard Client</button>
+      <div className="jobs-page-head" style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <h2>Clients</h2>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className={`icon-toggle ${viewMode === 'row' ? 'active' : ''}`} onClick={() => setViewMode('row')} title="List view"><FaList /></button>
+            <button type="button" className={`icon-toggle ${viewMode === 'card' ? 'active' : ''}`} onClick={() => setViewMode('card')} title="Card view"><FaThLarge /></button>
+          </div>
+        </div>
+        <div>
+          <button className="btn btn-primary" onClick={openNew}>+ Onboard Client</button>
+        </div>
+      </div>
+
+      <div className="toolbar candidates-toolbar" style={{ marginTop: 12, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div className="search-box" style={{ flex: '1 1 280px', minWidth: 160 }}>
+          <span>🔍</span>
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, phone…" />
+        </div>
+        <div className={`filter-menu ${openFilter === 'more' ? 'open' : ''}`}>
+          <button type="button" className="filter-summary" onClick={() => setOpenFilter(openFilter === 'more' ? null : 'more')}>Filters</button>
+          {openFilter === 'more' && (
+            <div className="filter-menu-panel">
+              <label className="filter-check"><input type="checkbox" checked={hasEmail === true} onChange={() => setHasEmail(prev => prev === true ? null : true)} /> <span>Has email</span></label>
+              <label className="filter-check"><input type="checkbox" checked={hasPhone === true} onChange={() => setHasPhone(prev => prev === true ? null : true)} /> <span>Has phone</span></label>
+              <label className="filter-check"><input type="checkbox" checked={hasNotes === true} onChange={() => setHasNotes(prev => prev === true ? null : true)} /> <span>Has notes</span></label>
+              <div style={{ marginTop: 8 }}>
+                <button className="btn btn-ghost" onClick={() => { setHasEmail(null); setHasPhone(null); setHasNotes(null); setOpenFilter(null) }}>Clear</button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {loading && <div className="card">Loading…</div>}
 
-      <div className="jobs-grid">
-        {clients.map(c => (
-          <div key={c.id} className="card job-card">
-            <div className="job-card-head">
-              <div className="job-title-block">
-                <div className="job-title">{c.name}</div>
-                <div className="job-meta">{c.email || ''} • {c.phone || ''}</div>
+      {viewMode === 'card' ? (
+        <div className="jobs-grid">
+          {filteredClients.map(c => (
+            <div key={c.id} className="card job-card">
+              <div className="job-card-head">
+                <div className="job-title-block">
+                  <div className="job-title">{c.name}</div>
+                  <div className="job-meta">{c.email || ''} • {c.phone || ''}</div>
+                </div>
+              </div>
+              <div className="job-actions">
+                <button className="btn btn-ghost" onClick={() => setEditing({ ...c })}>Edit</button>
+                <button className="btn btn-danger" onClick={() => remove(c)}>Delete</button>
               </div>
             </div>
-            <div className="job-actions">
-              <button className="btn btn-ghost" onClick={() => setEditing({ ...c })}>Edit</button>
-              <button className="btn btn-danger" onClick={() => remove(c)}>Delete</button>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="card">
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left', padding: '8px 12px' }}>Name</th>
+                <th style={{ textAlign: 'left', padding: '8px 12px' }}>Email</th>
+                <th style={{ textAlign: 'left', padding: '8px 12px' }}>Phone</th>
+                <th style={{ textAlign: 'right', padding: '8px 12px' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredClients.map(c => (
+                <tr key={c.id}>
+                  <td style={{ padding: '10px 12px' }}>{c.name}</td>
+                  <td style={{ padding: '10px 12px' }}>{c.email || ''}</td>
+                  <td style={{ padding: '10px 12px' }}>{c.phone || ''}</td>
+                  <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                    <button className="btn btn-ghost" onClick={() => setEditing({ ...c })}>Edit</button>
+                    <button className="btn btn-danger" onClick={() => remove(c)} style={{ marginLeft: 8 }}>Delete</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className={`overlay ${editing ? 'open' : ''}`} onClick={close} />
       <div className={`modal ${editing ? 'open' : ''}`} onClick={(e) => e.stopPropagation()}>

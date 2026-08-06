@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react'
+import { FaThLarge, FaList } from 'react-icons/fa'
 
 import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'react-router-dom'
@@ -55,6 +56,7 @@ export default function Candidates() {
   const [statusFilters, setStatusFilters] = useState<string[]>([])
   const [dateFrom, setDateFrom] = useState<string>('')
   const [dateTo, setDateTo] = useState<string>('')
+  const [viewMode, setViewMode] = useState<'row' | 'card'>('row')
   const [sortFields, setSortFields] = useState<string[]>(['date_desc'])
   const [showUpload, setShowUpload] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -63,6 +65,7 @@ export default function Candidates() {
   const [importPreview, setImportPreview] = useState<any[]>([])
   const [importErrors, setImportErrors] = useState<any[]>([])
   const [openFilter, setOpenFilter] = useState<string | null>(null)
+  const [sampleMenuOpen, setSampleMenuOpen] = useState(false)
   const [jobsMap, setJobsMap] = useState<Record<string, any>>({})
   const [clientFeedbackEdits, setClientFeedbackEdits] = useState<Record<string,string>>({})
 
@@ -387,6 +390,10 @@ export default function Candidates() {
         if (!target.closest('.filter-menu')) {
           setOpenFilter(null)
         }
+        // if click is outside the sample-menu, close it
+        if (!target.closest('.sample-menu')) {
+          setSampleMenuOpen(false)
+        }
         // if click is inside status-menu or status-cell, do not close status menu
         if (!target.closest('.status-menu') && !target.closest('.status-cell')) {
           setStatusMenuFor(null)
@@ -476,17 +483,16 @@ export default function Candidates() {
             <div className="filter-menu-panel">
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} title="From date" />
-                <span style={{ opacity: 0.6 }}>—</span>
-                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} title="To date" />
               </div>
-              <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-                <button className="btn btn-ghost" onClick={() => { setDateFrom(''); setDateTo('') }}>Reset</button>
-                <button className="btn btn-primary" onClick={() => setOpenFilter(null)}>Apply</button>
+              <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} title="To date" />
               </div>
             </div>
           )}
         </div>
-        <button className="btn btn-ghost" onClick={() => { setSearch(''); setStatusFilters([]); setSortFields(['date_desc']); setSelectedRoles([]); setDateFrom(''); setDateTo('') }}>Clear</button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button className="btn btn-ghost" onClick={() => { setSearch(''); setStatusFilters([]); setSortFields(['date_desc']); setSelectedRoles([]); setDateFrom(''); setDateTo('') }}>Clear</button>
+        </div>
       </div>
 
       {isLoading && <div className="card">Loading...</div>}
@@ -555,28 +561,45 @@ export default function Candidates() {
         </div>
       </div>
 
+      
+
       {!isLoading && (
         <div className="card candidates-card" style={{ marginBottom: 12 }} onClick={() => setOpenFilter(null)}>
           <div className="candidates-card-head">
             <h3>{candidateListTitle} ({filteredRows.length})</h3>
-            <div className="candidates-card-actions">
+            <div className="candidates-card-actions" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <button className="btn btn-ghost" onClick={exportCSV}>Export CSV</button>
-              {!isClient && <button className="btn btn-ghost" onClick={downloadSampleCSV}>Download sample CSV</button>}
-              {!isClient && <button className="btn btn-ghost" onClick={downloadSampleExcel}>Download sample Excel</button>}
               {!isClient && (
-                    <>
-                      <button className="btn btn-ghost" onClick={() => setShowUpload(true)}>Upload CSV/Excel</button>
-                      <button className="btn btn-primary" onClick={() => {
-                        setEditingId(null)
-                        setForm({ role: '', name: '', date: new Date().toISOString().slice(0, 10), exp: '', cctc: '', ectc: '', email: '', phone: '', linkedin: '', location: '', np: '', availability: '', intstatus: '', selstatus: 'progress', remarks: '', f2f: '', client_feedback: '' })
-                        setDrawerOpen(true)
-                      }}>+ Add Candidate</button>
-                    </>
+                <div className={`filter-menu sample-menu ${sampleMenuOpen ? 'open' : ''}`}>
+                  <button className="btn btn-ghost" style={{ minWidth: 160 }} onClick={() => setSampleMenuOpen(prev => !prev)}>Download sample</button>
+                  {sampleMenuOpen && (
+                    <div className="filter-menu-panel">
+                      <button className="btn btn-ghost" onClick={() => { downloadSampleCSV(); setSampleMenuOpen(false) }}>Download CSV</button>
+                      <button className="btn btn-ghost" onClick={() => { downloadSampleExcel(); setSampleMenuOpen(false) }}>Download Excel</button>
+                    </div>
+                    
                   )}
+                </div>
+              )}
+              {!isClient && (
+                <>
+                  <button className="btn btn-ghost" style={{ minWidth: 160 }} onClick={() => setShowUpload(true)}>Upload CSV/Excel</button>
+                  <div style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                    <button className="btn btn-primary" onClick={() => {
+                      setEditingId(null)
+                      setForm({ role: '', name: '', date: new Date().toISOString().slice(0, 10), exp: '', cctc: '', ectc: '', email: '', phone: '', linkedin: '', location: '', np: '', availability: '', intstatus: '', selstatus: 'progress', remarks: '', f2f: '', client_feedback: '' })
+                      setDrawerOpen(true)
+                    }}>+ Add Candidate</button>
+                    <button type="button" className={`icon-toggle ${viewMode === 'row' ? 'active' : ''}`} onClick={() => setViewMode('row')} title="List view"><FaList /></button>
+                    <button type="button" className={`icon-toggle ${viewMode === 'card' ? 'active' : ''}`} onClick={() => setViewMode('card')} title="Card view"><FaThLarge /></button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
-          <div className="table-wrap">
-            <table>
+          {viewMode === 'row' ? (
+            <div className="table-wrap">
+              <table>
               <colgroup>
                 <col className="check-col" />
                 <col className="candidate-col" />
@@ -884,8 +907,31 @@ export default function Candidates() {
                   <tr><td colSpan={isClient ? 7 : 8} style={{ textAlign: 'center', padding: 24 }}>No candidates found</td></tr>
                 )}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, marginBottom: 12 }}>
+              {filteredRows.map((c: any) => (
+                <div key={c.id} className="card" style={{ padding: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{c.name}</div>
+                      <div style={{ fontSize: 13, color: 'var(--muted)' }}>{c.email}</div>
+                      <div style={{ fontSize: 13, marginTop: 6 }}>{c.applied_job_title || c.role || ''}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div className={`badge ${normalizedStatus(c.selstatus)}`}>{statusLabel(c.selstatus)}</div>
+                      <div style={{ marginTop: 8, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                        <button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); setEditingId(String(c.id)); setForm({ ...c }); setDrawerOpen(true) }}><FaPen /></button>
+                        <button className="btn btn-danger" onClick={async (e) => { e.stopPropagation(); if (!confirm('Delete this candidate?')) return; try { const ok = await CandidateService.remove(String(c.id)); if (ok) { setRows(prev=>prev.filter(x=>x.id!==c.id)); addToast('Candidate deleted', 'success') } else addToast('Delete failed', 'error') } catch (err: any) { addToast('Delete failed: ' + (err?.message || String(err)), 'error') } }}><FaTrashAlt /></button>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 10, fontSize: 13, color: 'var(--muted)' }}>{formatExperience(c.exp)} • {formatLocation(c.location)}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

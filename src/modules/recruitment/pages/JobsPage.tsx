@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import { FaThLarge, FaList, FaPaperPlane, FaUsers, FaInfoCircle, FaPen, FaTrashAlt } from 'react-icons/fa'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useToast } from '../../../components/ToastProvider'
@@ -39,6 +40,7 @@ export default function JobsPage() {
   const [postedStart, setPostedStart] = useState('')
   const [postedEnd, setPostedEnd] = useState('')
   const [openFilter, setOpenFilter] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<'row' | 'card'>('card')
 
   const clientsMap = React.useMemo(() => {
     const m: Record<string,string> = {}
@@ -233,6 +235,7 @@ export default function JobsPage() {
 
   const filteredJobs = useMemo(() => {
     const q = String(search || '').trim().toLowerCase()
+    const tokens = q ? q.split(/\s+/).filter(Boolean) : []
     return (jobs || []).filter((j: any) => {
       if (statusFilter && statusFilter !== 'All') {
         if ((j.status || 'Open') !== statusFilter) return false
@@ -255,9 +258,34 @@ export default function JobsPage() {
           if (isNaN(postedTs) || postedTs > (endTs + 24 * 60 * 60 * 1000 - 1)) return false
         }
       }
-      if (!q) return true
-      const txt = `${j.title || ''} ${j.location || ''} ${clientsMap[String(j.client_id || j.client_name || '')] || j.client_name || ''}`.toLowerCase()
-      return txt.includes(q)
+
+      if (!tokens.length) return true
+
+      // Build a searchable text blob including key fields
+      const gather = (val: any) => {
+        if (val == null) return ''
+        if (Array.isArray(val)) return val.join(' ')
+        return String(val)
+      }
+      const txt = [
+        j.title,
+        j.location,
+        clientsMap[String(j.client_id || j.client_name || '')] || j.client_name,
+        j.summary,
+        j.desc,
+        j.description,
+        j.job_description,
+        j.technical_skills,
+        j.preferred_skills,
+        j.responsibilities,
+        j.qualifications,
+        j.job_id,
+        j.job_ref,
+        j.id
+      ].map(gather).join(' ').toLowerCase()
+
+      // require all tokens to be present (AND)
+      return tokens.every(tok => txt.includes(tok))
     })
   }, [jobs, search, clientFilter, statusFilter, clientsMap, postedStart, postedEnd])
 
@@ -268,7 +296,7 @@ export default function JobsPage() {
         {!isClient && <button className="btn btn-primary" onClick={openNewJob}>+ Add Job</button>}
       </div>
 
-      <div className="toolbar candidates-toolbar" style={{ marginTop: 12, marginBottom: 12 }}>
+      <div className="toolbar candidates-toolbar" style={{ marginTop: 12, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
         <div className="search-box">
           <span>🔍</span>
           <input placeholder="Search jobs, location, client..." value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -283,7 +311,7 @@ export default function JobsPage() {
 
         <div className="filter-menu">
           <select className="filter-summary" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="All">All</option>
+            <option value="All">All Status</option>
             <option value="Open">Open</option>
             <option value="Closed">Closed</option>
           </select>
@@ -291,7 +319,7 @@ export default function JobsPage() {
 
         <div className={`filter-menu ${openFilter === 'posted' ? 'open' : ''}`}>
           <button type="button" className="filter-summary" onClick={() => setOpenFilter(openFilter === 'posted' ? null : 'posted')}>
-            {postedStart || postedEnd ? `Posted: ${postedStart || '—'} → ${postedEnd || '—'}` : 'Posted'}
+            {postedStart || postedEnd ? `Posted: ${postedStart || '—'} → ${postedEnd || '—'}` : 'Posted Date'}
           </button>
           {openFilter === 'posted' && (
             <div className="filter-menu-panel posted">
@@ -311,11 +339,15 @@ export default function JobsPage() {
             </div>
           )}
         </div>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <button type="button" className={`icon-toggle ${viewMode === 'row' ? 'active' : ''}`} onClick={() => setViewMode('row')} title="List view"><FaList /></button>
+          <button type="button" className={`icon-toggle ${viewMode === 'card' ? 'active' : ''}`} onClick={() => setViewMode('card')} title="Card view"><FaThLarge /></button>
+        </div>
       </div>
-
-      <div className="jobs-grid">
-        {loadingJobs && <div className="card">Loading jobs…</div>}
-        {filteredJobs.map(job => {
+      {viewMode === 'card' ? (
+        <div className="jobs-grid">
+          {loadingJobs && <div className="card">Loading jobs…</div>}
+          {filteredJobs.map(job => {
           const apps = applicationCount(job)
 
           return (
@@ -354,8 +386,53 @@ export default function JobsPage() {
               </div>
             </div>
           )
-        })}
-      </div>
+          })}
+        </div>
+      ) : (
+        <div className="card">
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left', padding: '8px 12px' }}>Title</th>
+                <th style={{ textAlign: 'left', padding: '8px 12px' }}>Location</th>
+                <th style={{ textAlign: 'left', padding: '8px 12px' }}>Client</th>
+                <th style={{ textAlign: 'left', padding: '8px 12px' }}>Posted</th>
+                <th style={{ textAlign: 'left', padding: '8px 12px' }}>Status</th>
+                <th style={{ textAlign: 'right', padding: '8px 12px' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredJobs.map(job => {
+                const apps = applicationCount(job)
+                return (
+                  <tr key={job.id} role="button" tabIndex={0} onClick={() => openDetails(job)} onKeyDown={(e) => { if (e.key === 'Enter') openDetails(job) }}>
+                    <td style={{ padding: '10px 12px' }}>{job.title}</td>
+                    <td style={{ padding: '10px 12px' }}>{job.location}</td>
+                    <td style={{ padding: '10px 12px' }}>{clientsMap[String(job.client_id || job.client_name || '')] || job.client_name || ''}</td>
+                    <td style={{ padding: '10px 12px' }}>{job.posted}</td>
+                    <td style={{ padding: '10px 12px' }}>{job.status}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
+                        {!isClient && job.status !== 'Closed' && (
+                          <button className="btn btn-ghost" title="Apply" onClick={(e) => { e.stopPropagation(); navigate('/candidates?job_ref=' + encodeURIComponent(job.job_id || job.job_ref || job.id) + '&job_title=' + encodeURIComponent(job.title)) }}><FaPaperPlane /></button>
+                        )}
+                        <button className="btn btn-primary" title="View candidates" onClick={(e) => { e.stopPropagation(); navigate('/candidates?role=' + encodeURIComponent(job.title)) }}><FaUsers /></button>
+                        <button className="btn btn-ghost" title="Details" onClick={(e) => { e.stopPropagation(); openDetails(job) }}><FaInfoCircle /></button>
+                        {!isClient && (
+                          <>
+                            <button className="btn btn-ghost" title="Edit" onClick={(e) => { e.stopPropagation(); setNewJob({ ...job }) }}><FaPen /></button>
+                            <button className="btn btn-danger" title="Delete" onClick={(e) => { e.stopPropagation(); deleteJob(job) }}><FaTrashAlt /></button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Toasts rendered by ToastProvider */}
 
