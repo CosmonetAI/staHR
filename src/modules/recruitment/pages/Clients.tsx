@@ -26,7 +26,7 @@ export default function ClientsPage() {
     return () => { mounted = false }
   }, [])
 
-  function openNew() { setEditing({ name: '', contact_name: '', email: '', phone: '', notes: '' }) }
+  function openNew() { setEditing({ name: '', email: '', phone: '', notes: '' }) }
   function close() { setEditing(null) }
 
   async function save() {
@@ -73,7 +73,7 @@ export default function ClientsPage() {
             <div className="job-card-head">
               <div className="job-title-block">
                 <div className="job-title">{c.name}</div>
-                <div className="job-meta">{c.contact_name || ''} • {c.email || ''} • {c.phone || ''}</div>
+                <div className="job-meta">{c.email || ''} • {c.phone || ''}</div>
               </div>
             </div>
             <div className="job-actions">
@@ -100,15 +100,9 @@ export default function ClientsPage() {
                 <label>Client name *</label>
                 <input value={editing.name || ''} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
               </div>
-              <div className="field-row">
-                <div className="field">
-                  <label>Contact</label>
-                  <input value={editing.contact_name || ''} onChange={(e) => setEditing({ ...editing, contact_name: e.target.value })} />
-                </div>
-                <div className="field">
-                  <label>Email</label>
-                  <input value={editing.email || ''} onChange={(e) => setEditing({ ...editing, email: e.target.value })} />
-                </div>
+              <div className="field">
+                <label>Email</label>
+                <input value={editing.email || ''} onChange={(e) => setEditing({ ...editing, email: e.target.value })} />
               </div>
               <div className="field">
                 <label>Phone</label>
