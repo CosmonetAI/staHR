@@ -115,6 +115,8 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
   const [newPwdLoading, setNewPwdLoading] = useState(false)
   const [newPwdError, setNewPwdError] = useState<string | null>(null)
   const [newPwdMsg, setNewPwdMsg] = useState<string | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
 
   React.useEffect(() => {
     // Detect recovery mode: query param type=recovery or access_token in hash
@@ -236,6 +238,7 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
     setNewPwdLoading(true)
     try {
       if (!vals.password || vals.password.length < 6) throw new Error('Password must be at least 6 characters')
+      if (!('confirmPassword' in vals) || String(vals.confirmPassword || '') !== String(vals.password || '')) throw new Error('Passwords do not match')
       const { error } = await updatePassword(vals.password)
       if (error) throw error
       setNewPwdMsg('Password updated successfully. Finalizing invite...')
@@ -280,7 +283,17 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
         <form onSubmit={handleSubmit(handleNewPassword)} className="login-form" noValidate>
           <div className="field" style={{ marginBottom: 12 }}>
             <label className="field-label">New password</label>
-            <input placeholder="Enter new password" type="password" {...register('password')} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input placeholder="Enter new password" type={showPassword ? 'text' : 'password'} {...register('password')} />
+              <button type="button" className="btn btn-ghost" onClick={() => setShowPassword(s => !s)} style={{ padding: '6px 8px' }}>{showPassword ? 'Hide' : 'Show'}</button>
+            </div>
+          </div>
+          <div className="field" style={{ marginBottom: 12 }}>
+            <label className="field-label">Confirm password</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input placeholder="Re-enter new password" type={showConfirm ? 'text' : 'password'} {...register('confirmPassword')} />
+              <button type="button" className="btn btn-ghost" onClick={() => setShowConfirm(s => !s)} style={{ padding: '6px 8px' }}>{showConfirm ? 'Hide' : 'Show'}</button>
+            </div>
           </div>
           {newPwdError && <div className="field-error" style={{ marginBottom: 12 }}>{newPwdError}</div>}
           {newPwdMsg && <div style={{ marginBottom: 12, background: '#f8fafc', padding: 10, borderRadius: 6 }}>{newPwdMsg}</div>}
