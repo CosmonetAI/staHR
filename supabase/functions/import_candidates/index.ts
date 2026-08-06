@@ -236,27 +236,54 @@ serve(async (req) => {
         }
       }
 
+      const asDisplay = (raw: any) => {
+        if (raw == null) return ''
+        // If raw is a JSON string, try to parse
+        if (typeof raw === 'string') {
+          const s = raw.trim()
+          if (!s) return ''
+          if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {
+            try { raw = JSON.parse(s) } catch (e) { return s }
+          } else {
+            return s
+          }
+        }
+        if (typeof raw === 'object') {
+          if (raw.display && typeof raw.display === 'string' && raw.display.trim()) return raw.display
+          if (raw.start_time && raw.end_time) {
+            const day = raw.day ? `${raw.day}, ` : ''
+            const date = raw.date || ''
+            return `${day}${date} - ${raw.start_time} to ${raw.end_time}`.trim()
+          }
+          if (raw.time || raw.start_time) {
+            const t = raw.time || raw.start_time
+            const day = raw.day ? `${raw.day}, ` : ''
+            const date = raw.date || ''
+            return `${day}${date} - ${t}`.trim()
+          }
+          return Object.values(raw).filter(Boolean).join(' ').trim()
+        }
+        return String(raw).trim()
+      }
+
       const allowed = (c: any) => ({
             name: c.name || '',
             role: c.job_role || c.role || '',
             date: (function() {
-              const todayIso = new Date().toISOString().slice(0,10)
               const raw = c.date || ''
-              if (!raw) return todayIso
+              if (!raw) return ''
               // prefer ISO yyyy-mm-dd if present
               const isoMatch = String(raw).match(/(\d{4}-\d{2}-\d{2})/)
               if (isoMatch) {
-                const d = new Date(isoMatch[1])
-                if (!isNaN(d.getTime())) {
-                  const dIso = d.toISOString().slice(0,10)
-                  return dIso < todayIso ? todayIso : dIso
-                }
+                // use the matched ISO date string directly to avoid timezone shifts
+                const dIso = isoMatch[1]
+                return dIso
               }
               // fallback: try parsing and normalize
               const parsed = new Date(String(raw))
               if (!isNaN(parsed.getTime())) {
                 const pIso = parsed.toISOString().slice(0,10)
-                return pIso < todayIso ? todayIso : pIso
+                return pIso
               }
               return String(raw)
             })(),
@@ -269,25 +296,19 @@ serve(async (req) => {
         location: c.current_location || c.location || '',
         np: c.notice_period || c.np || '',
         availability: (function() {
-          const todayIso = new Date().toISOString().slice(0,10)
           const raw = c.availability || ''
           if (!raw) return ''
+          if (typeof raw === 'object') return asDisplay(raw)
           const m = String(raw).match(/^(\d{4}-\d{2}-\d{2})(?:\s+(.*))?$/)
           if (m) {
-            const d = new Date(m[1])
-            if (!isNaN(d.getTime())) {
-              const dIso = d.toISOString().slice(0,10)
-              return (dIso < todayIso ? todayIso : dIso) + (m[2] ? ' ' + m[2] : '')
-            }
+            const dIso = m[1]
+            return (dIso) + (m[2] ? ' ' + m[2] : '')
           }
           // else try to parse a date anywhere in string
           const isoMatch = String(raw).match(/(\d{4}-\d{2}-\d{2})/)
           if (isoMatch) {
-            const d = new Date(isoMatch[1])
-            if (!isNaN(d.getTime())) {
-              const dIso = d.toISOString().slice(0,10)
-              return String(raw).replace(isoMatch[1], dIso)
-            }
+            const dIso = isoMatch[1]
+            return String(raw).replace(isoMatch[1], dIso)
           }
           return String(raw)
         })(),
@@ -295,50 +316,43 @@ serve(async (req) => {
         selstatus: normalizeSelectionStatus(c.selstatus),
         remarks: c.remarks || '',
         f2f: (function() {
-          const todayIso = new Date().toISOString().slice(0,10)
           const raw = c.f2f || ''
           if (!raw) return ''
+          if (typeof raw === 'object') return asDisplay(raw)
           const m = String(raw).match(/^(\d{4}-\d{2}-\d{2})(?:\s+(.*))?$/)
           if (m) {
-            const d = new Date(m[1])
-            if (!isNaN(d.getTime())) {
-              const dIso = d.toISOString().slice(0,10)
-              return (dIso < todayIso ? todayIso : dIso) + (m[2] ? ' ' + m[2] : '')
-            }
+            const dIso = m[1]
+            return (dIso) + (m[2] ? ' ' + m[2] : '')
           }
           const isoMatch = String(raw).match(/(\d{4}-\d{2}-\d{2})/)
           if (isoMatch) {
-            const d = new Date(isoMatch[1])
-            if (!isNaN(d.getTime())) {
-              const dIso = d.toISOString().slice(0,10)
-              return String(raw).replace(isoMatch[1], dIso)
-            }
+            const dIso = isoMatch[1]
+            return String(raw).replace(isoMatch[1], dIso)
           }
           return String(raw)
         })(),
         interview_slot: (function() {
-          const todayIso = new Date().toISOString().slice(0,10)
           const raw = c.interview_slot || c.interview_slot_raw || ''
           if (!raw) return ''
+          if (typeof raw === 'object') return asDisplay(raw)
           const m = String(raw).match(/^(\d{4}-\d{2}-\d{2})(?:\s+(.*))?$/)
           if (m) {
-            const d = new Date(m[1])
-            if (!isNaN(d.getTime())) {
-              const dIso = d.toISOString().slice(0,10)
-              return (dIso < todayIso ? todayIso : dIso) + (m[2] ? ' ' + m[2] : '')
-            }
+            const dIso = m[1]
+            return (dIso) + (m[2] ? ' ' + m[2] : '')
           }
           const isoMatch = String(raw).match(/(\d{4}-\d{2}-\d{2})/)
           if (isoMatch) {
-            const d = new Date(isoMatch[1])
-            if (!isNaN(d.getTime())) {
-              const dIso = d.toISOString().slice(0,10)
-              return String(raw).replace(isoMatch[1], dIso)
-            }
+            const dIso = isoMatch[1]
+            return String(raw).replace(isoMatch[1], dIso)
           }
           return String(raw)
         })(),
-        confirmed_availability: (c.confirmed_availability || c.confirmed_availability_raw || ''),
+        confirmed_availability: (function() {
+          const raw = c.confirmed_availability || c.confirmed_availability_raw || ''
+          if (!raw) return ''
+          if (typeof raw === 'object') return asDisplay(raw)
+          return String(raw).trim()
+        })(),
         applied_job_id: c._job_id || c.applied_job_id || c.job_id || null,
         applied_job_title: c.applied_job_title || c.job_title || c.job_role || c.role || null,
         resume_url: c.resume_url || c.resume || null,

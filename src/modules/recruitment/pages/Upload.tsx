@@ -35,7 +35,20 @@ export default function Upload() {
 
   const handleFile = async (file: File) => {
     const { rows, errors } = await parseCSVFile(file)
-    setPreview([{ sheet: file.name, rows, errors }])
+    // coerce structured fields that may be objects or JSON strings
+    const coerce = (v: any) => {
+      if (v == null || v === '') return ''
+      if (typeof v === 'object') return v
+      if (typeof v === 'string') {
+        const s = v.trim()
+        if (!s) return ''
+        try { const j = JSON.parse(s); if (j && typeof j === 'object') return j } catch (e) {}
+        return s
+      }
+      return String(v)
+    }
+    const coerced = (rows || []).map(r => ({ ...r, interview_slot: coerce(r.interview_slot), confirmed_availability: coerce(r.confirmed_availability), availability: coerce(r.availability), f2f: coerce(r.f2f) }))
+    setPreview([{ sheet: file.name, rows: coerced, errors }])
     const total = (rows || []).length
     if (!total) {
       addToast('No rows parsed from the file', 'error')

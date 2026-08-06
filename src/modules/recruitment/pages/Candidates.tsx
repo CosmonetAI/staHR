@@ -197,11 +197,9 @@ export default function Candidates() {
       const cols = CANDIDATE_HEADERS
       const sampleRows = [
         {
-          name: 'Alice Doe', email: 'alice@example.com', phone: '9876543210', experience: '3', current_company: '', current_location: 'Bengaluru', preferred_location: '', skills: '', notice_period: '30', current_ctc: '8', expected_ctc: '12', date: new Date().toISOString().slice(0,10), role: 'Frontend Engineer', selstatus: 'progress', intstatus: 'Phone screen', availability: '', remarks: 'Strong React skills', linkedin: 'https://linkedin.com/in/alice', interview_slot: '', confirmed_availability: '', f2f: ''
-        },
-        {
-          name: 'Bob Kumar', email: 'bob@example.com', phone: '9123456780', experience: '5', current_company: '', current_location: 'Mumbai', preferred_location: '', skills: '', notice_period: '15', current_ctc: '15', expected_ctc: '20', date: new Date().toISOString().slice(0,10), role: 'Backend Engineer', selstatus: 'progress', intstatus: 'Interview round 1', availability: '', remarks: '', linkedin: '', interview_slot: '', confirmed_availability: '', f2f: ''
+          job_id: 'JOB-001', name: 'Alice Doe', email: 'alice@example.com', phone: '9876543210', experience: '3', current_company: '', current_location: 'Bengaluru', preferred_location: '', skills: '', notice_period: '30', current_ctc: '8', expected_ctc: '12', date: new Date().toISOString().slice(0,10), role: 'Frontend Engineer', selstatus: 'progress', intstatus: 'Phone screen', availability: '', remarks: 'Strong React skills', linkedin: 'https://linkedin.com/in/alice', interview_slot: '', confirmed_availability: '', f2f: ''
         }
+       
       ]
 
       const esc = (v:any) => {
@@ -230,8 +228,8 @@ export default function Candidates() {
   function downloadSampleExcel() {
     try {
       const sampleRows = [
-        { name: 'Alice Doe', email: 'alice@example.com', phone: '9876543210', experience: 3, current_company: '', current_location: 'Bengaluru', preferred_location: '', skills: '', notice_period: '30', current_ctc: 8, expected_ctc: 12, date: new Date().toISOString().slice(0,10), role: 'Frontend Engineer', selstatus: 'progress', intstatus: 'Phone screen', availability: '', remarks: 'Strong React skills', linkedin: 'https://linkedin.com/in/alice', interview_slot: '', confirmed_availability: '', f2f: '' },
-        { name: 'Bob Kumar', email: 'bob@example.com', phone: '9123456780', experience: 5, current_company: '', current_location: 'Mumbai', preferred_location: '', skills: '', notice_period: '15', current_ctc: 15, expected_ctc: 20, date: new Date().toISOString().slice(0,10), role: 'Backend Engineer', selstatus: 'progress', intstatus: 'Interview round 1', availability: '', remarks: '', linkedin: '', interview_slot: '', confirmed_availability: '', f2f: '' }
+        { job_id: 'JOB-001', name: 'Alice Doe', email: 'alice@example.com', phone: '9876543210', experience: 3, current_company: '', current_location: 'Bengaluru', preferred_location: '', skills: '', notice_period: '30', current_ctc: 8, expected_ctc: 12, date: new Date().toISOString().slice(0,10), role: 'Frontend Engineer', selstatus: 'progress', intstatus: 'Phone screen', availability: '', remarks: 'Strong React skills', linkedin: 'https://linkedin.com/in/alice', interview_slot: '', confirmed_availability: '', f2f: '' },
+        { job_id: 'JOB-002', name: 'Bob Kumar', email: 'bob@example.com', phone: '9123456780', experience: 5, current_company: '', current_location: 'Mumbai', preferred_location: '', skills: '', notice_period: '15', current_ctc: 15, expected_ctc: 20, date: new Date().toISOString().slice(0,10), role: 'Backend Engineer', selstatus: 'progress', intstatus: 'Interview round 1', availability: '', remarks: '', linkedin: '', interview_slot: '', confirmed_availability: '', f2f: '' }
       ]
       const aoa = []
       aoa.push(CANDIDATE_HEADER_LABELS)
@@ -472,8 +470,22 @@ export default function Candidates() {
             try {
               const { rows: rowsFlat, errors } = await parseCSVFile(file)
               if (!rowsFlat.length) { addToast('No rows parsed', 'error'); return }
+              // Resolve role/job title from provided job id (if available)
+              const mapped = rowsFlat.map(r => {
+                try {
+                  const key = String(r.applied_job_id || r.job_id || r.job_ref || '')
+                  if (key && jobsMap && jobsMap[key]) {
+                    const job = jobsMap[key]
+                    r.role = job.title || r.role || ''
+                    r.job_role = job.title || r.job_role || ''
+                    r.applied_job_title = job.title || r.applied_job_title || ''
+                    r.applied_job_id = r.applied_job_id || key
+                  }
+                } catch (err) {}
+                return r
+              })
               try {
-                const inserted = await CandidateService.createMany(rowsFlat)
+                const inserted = await CandidateService.createMany(mapped)
                 const newRows = inserted.map((p: any) => ({
                   id: p.id,
                   name: p.name,
@@ -861,10 +873,22 @@ export default function Candidates() {
               setImportErrors(errors || [])
               if (rowsFlat.length) {
                 const p = rowsFlat[0]
+                const coerce = (v: any) => {
+                  if (v == null || v === '') return ''
+                  if (typeof v === 'object') return v
+                  if (typeof v === 'string') {
+                    const s = v.trim()
+                    if (!s) return ''
+                    try { const j = JSON.parse(s); if (j && typeof j === 'object') return j } catch (e) {}
+                    return s
+                  }
+                  return String(v)
+                }
+
                 setForm({
                   role: p.job_role || p.role || '',
                   name: p.name || '',
-                  date: new Date().toISOString().slice(0, 10),
+                  date: p.date || new Date().toISOString().slice(0, 10),
                   exp: p.experience ? String(p.experience) : '',
                   cctc: p.current_ctc ? String(p.current_ctc) : '',
                   ectc: p.expected_ctc ? String(p.expected_ctc) : '',
@@ -873,11 +897,13 @@ export default function Candidates() {
                   linkedin: p.linkedin || '',
                   location: p.current_location || '',
                   np: p.notice_period || '',
-                  availability: p.availability || '',
+                  availability: coerce(p.availability),
                   intstatus: p.intstatus || '',
+                  interview_slot: coerce(p.interview_slot),
+                  confirmed_availability: coerce(p.confirmed_availability),
                   selstatus: p.selstatus || 'progress',
                   remarks: p.remarks || '',
-                  f2f: p.f2f || ''
+                  f2f: coerce(p.f2f)
                 })
                 addToast('Form populated from CSV (first row)', 'info', 1500)
               }

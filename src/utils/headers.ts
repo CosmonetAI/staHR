@@ -1,5 +1,6 @@
 // Canonical header keys in the specific order requested by the user
 export const CANDIDATE_HEADERS = [
+  'job_id',
   'date',
   'role',
   'name',
@@ -28,6 +29,7 @@ function toTitle(s: string) {
 }
 
 const LABEL_OVERRIDES: Record<string, string> = {
+  job_id: 'Job Id',
   date: 'Date of submission',
   name: 'Candidate Name',
   experience: 'Relevant experience',
