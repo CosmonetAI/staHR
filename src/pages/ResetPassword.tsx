@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { FaEye, FaEyeSlash } from 'react-icons/fa'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
@@ -283,16 +284,20 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
         <form onSubmit={handleSubmit(handleNewPassword)} className="login-form" noValidate>
           <div className="field" style={{ marginBottom: 12 }}>
             <label className="field-label">New password</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input placeholder="Enter new password" type={showPassword ? 'text' : 'password'} {...register('password')} />
-              <button type="button" className="show-pass-btn" onClick={() => setShowPassword(s => !s)} style={{ padding: '6px 8px' }}>{showPassword ? 'Hide' : 'Show'}</button>
+            <div style={{ position: 'relative' }}>
+              <input placeholder="Enter new password" type={showPassword ? 'text' : 'password'} {...register('password')} style={{ width: '100%', paddingRight: 44 }} />
+              <button type="button" onClick={() => setShowPassword(s => !s)} aria-label={showPassword ? 'Hide password' : 'Show password'} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', padding: 6, cursor: 'pointer' }}>
+                {showPassword ? <FaEyeSlash /> : <FaEye />}
+              </button>
             </div>
           </div>
           <div className="field" style={{ marginBottom: 12 }}>
             <label className="field-label">Confirm password</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input placeholder="Re-enter new password" type={showConfirm ? 'text' : 'password'} {...register('confirmPassword')} />
-              <button type="button" className="show-pass-btn" onClick={() => setShowConfirm(s => !s)} style={{ padding: '6px 8px' }}>{showConfirm ? 'Hide' : 'Show'}</button>
+            <div style={{ position: 'relative' }}>
+              <input placeholder="Re-enter new password" type={showConfirm ? 'text' : 'password'} {...register('confirmPassword')} style={{ width: '100%', paddingRight: 44 }} />
+              <button type="button" onClick={() => setShowConfirm(s => !s)} aria-label={showConfirm ? 'Hide confirm password' : 'Show confirm password'} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', padding: 6, cursor: 'pointer' }}>
+                {showConfirm ? <FaEyeSlash /> : <FaEye />}
+              </button>
             </div>
           </div>
           {newPwdError && <div className="field-error" style={{ marginBottom: 12 }}>{newPwdError}</div>}
