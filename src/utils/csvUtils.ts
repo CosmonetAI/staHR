@@ -62,39 +62,39 @@ function parseDateString(v: unknown) {
   if (/^#+$/.test(trimmed)) return undefined
   // already ISO yyyy-mm-dd
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed
-  // dd-mm-yyyy or d-m-yyyy or dd/mm/yyyy
-  let m = trimmed.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/)
+  // Try numeric date formats: dd-mm-yyyy, mm/dd/yyyy
+  let m = trimmed.match(/^(\d{1,2})[\/ -](\d{1,2})[\/ -](\d{2,4})$/)
   if (m) {
     const d = Number(m[1])
     const mo = Number(m[2])
-    const y = Number(m[3])
+    let y = Number(m[3])
+    if (m[3].length === 2) {
+      y = y + (y >= 70 ? 1900 : 2000)
+    }
     if (y >= 1900 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
       const mm = String(mo).padStart(2, '0')
       const dd = String(d).padStart(2, '0')
       return `${y}-${mm}-${dd}`
     }
   }
-  // mm/dd/yyyy
-  m = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+
+  // Try patterns with month names: 04-Aug-2026 or 4 Aug 26
+  const monthNames: Record<string, number> = { jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, sept:9, oct:10, nov:11, dec:12 }
+  m = trimmed.match(/^(\d{1,2})[\s\/-]([A-Za-z]{3,9})[\s\/-](\d{2,4})$/)
   if (m) {
-    const mo = Number(m[1])
-    const d = Number(m[2])
-    const y = Number(m[3])
+    const d = Number(m[1])
+    const monRaw = (m[2] || '').toLowerCase().substr(0,3)
+    let y = Number(m[3])
+    if (m[3].length === 2) y = y + (y >= 70 ? 1900 : 2000)
+    const mo = monthNames[monRaw] || 0
     if (y >= 1900 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
       const mm = String(mo).padStart(2, '0')
       const dd = String(d).padStart(2, '0')
       return `${y}-${mm}-${dd}`
     }
   }
-  // try Date.parse fallback
-  const parsed = Date.parse(trimmed)
-  if (!Number.isNaN(parsed)) {
-    const dt = new Date(parsed)
-    const y = dt.getFullYear()
-    const mm = String(dt.getMonth() + 1).padStart(2, '0')
-    const dd = String(dt.getDate()).padStart(2, '0')
-    return `${y}-${mm}-${dd}`
-  }
+  // Do not use Date.parse fallback — avoid implicit timezone conversions.
+  // If explicit patterns above do not match, return undefined so the raw value is preserved.
   return undefined
 }
 
@@ -146,6 +146,8 @@ function normalizeRow(raw: Record<string, any>) {
   normalized.expected_ctc = firstValue(normalized, ['expected_ctc', 'ectc', 'e_ctc', 'expected_salary', 'expectedctc'])
 
   normalized.role = firstValue(normalized, ['role', 'job_role', 'position'])
+  // job identifiers from CSV (friendly job_id, applied_job_id, job_ref)
+  normalized.applied_job_id = firstValue(normalized, ['applied_job_id', 'job_id', 'job_ref'])
   normalized.date = firstValue(normalized, ['date', 'date_of_submission', 'submission_date'])
   // normalize date strings to ISO yyyy-mm-dd to avoid DB errors
   try {
@@ -163,6 +165,85 @@ function normalizeRow(raw: Record<string, any>) {
   normalized.selstatus = normalizeSelectionStatus(firstValue(normalized, ['selstatus', 'selection_status', 'status', 'candidate_status']))
   normalized.remarks = firstValue(normalized, ['remarks', 'notes'])
   normalized.f2f = firstValue(normalized, ['f2f', 'f2f_interview_availability'])
+
+  // Normalize interview-related date+time fields into structured objects when possible.
+  // Returns either a structured object { display, date, day, start_time, end_time, time, timezone }
+  // or the original trimmed string when parsing fails.
+  const normalizeDateTimeField = (val: any) => {
+    if (val == null) return val
+    let s = String(val).trim()
+    if (!s) return s
+    s = s.replace(/^"|"$/g, '').replace(/^\(|\)$/g, '').trim()
+    s = s.replace(/[–—]/g, '-').replace(/\s*-\s*/g, ' - ').replace(/\s+/g, ' ').trim()
+
+    // Try to extract ISO-style date (yyyy-mm-dd) anywhere in the string
+    const isoDateMatch = s.match(/(\d{4}-\d{2}-\d{2})/)
+    let dateIso: string | null = isoDateMatch ? isoDateMatch[1] : null
+
+    // If no ISO date, try to parse common date patterns using parseDateString
+    if (!dateIso) {
+      const parsed = parseDateString(s)
+      if (parsed && /^\d{4}-\d{2}-\d{2}$/.test(parsed)) dateIso = parsed
+    }
+
+    // Helper to format display date and weekday
+    const formatDisplayDate = (dIso: string) => {
+      try {
+        const d = new Date(dIso + 'T00:00:00')
+        const weekday = d.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'Asia/Kolkata' })
+        const day = String(d.getDate()).padStart(2, '0')
+        const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+        const mon = monthNames[d.getMonth()]
+        const year = d.getFullYear()
+        return { displayDate: `${day}-${mon}-${year}`, weekday }
+      } catch (e) {
+        return { displayDate: dIso, weekday: '' }
+      }
+    }
+
+    // Extract time tokens like 11:30AM or 11:30 AM
+    const timeRegex = /(\d{1,2}:\d{2})\s*(AM|PM|am|pm)?/g
+    const times: string[] = []
+    let tm: RegExpExecArray | null
+    while ((tm = timeRegex.exec(s)) !== null) {
+      const hhmm = tm[1]
+      const ap = tm[2] ? tm[2].toUpperCase() : ''
+      const formatted = ap ? `${hhmm} ${ap}` : hhmm
+      times.push(formatted)
+    }
+
+    // If we have a date, build structured object
+    if (dateIso) {
+      const { displayDate, weekday } = formatDisplayDate(dateIso)
+      // For ranges, look for two times
+      if (times.length >= 2) {
+        const start = times[0]
+        const end = times[1]
+        const display = `${weekday}, ${displayDate} - ${start} to ${end}`
+        return { display, date: dateIso, day: weekday, start_time: start, end_time: end }
+      }
+      // Single time
+      if (times.length === 1) {
+        const t = times[0]
+        const display = `${weekday}, ${displayDate} - ${t}`
+        return { display, date: dateIso, day: weekday, time: t }
+      }
+      // No explicit time found — return date-only structured
+      const display = `${weekday}, ${displayDate}`
+      return { display, date: dateIso, day: weekday }
+    }
+
+    // If no date found but times found, return times-only structure
+    if (times.length === 2) return { display: s, start_time: times[0], end_time: times[1] }
+    if (times.length === 1) return { display: s, time: times[0] }
+
+    // Fallback: return original trimmed string
+    return s
+  }
+
+  if (normalized.interview_slot) normalized.interview_slot = normalizeDateTimeField(normalized.interview_slot)
+  if (normalized.availability) normalized.availability = normalizeDateTimeField(normalized.availability)
+  if (normalized.f2f) normalized.f2f = normalizeDateTimeField(normalized.f2f)
 
   return normalized
 }

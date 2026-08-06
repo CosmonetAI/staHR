@@ -96,7 +96,19 @@ export default function RecruitmentDashboard() {
     const isEdit = typeof id !== 'undefined' && id !== null
     setEditingId(isEdit ? id! : null)
     const row = isEdit ? data.find((d: any) => String(d.id) === String(id)) : { role: '', name: '', date: new Date().toISOString().slice(0, 10), exp: '', cctc: '', ectc: '', email: '', phone: '', linkedin: '', location: '', np: '', availability: '', intstatus: '', selstatus: 'progress', remarks: '', f2f: '' }
-    setForm({ ...row })
+    const coerce = (v: any) => {
+      if (v == null || v === '') return ''
+      if (typeof v === 'object') return v
+      if (typeof v === 'string') {
+        const s = v.trim()
+        if (!s) return ''
+        try { const j = JSON.parse(s); if (j && typeof j === 'object') return j } catch (e) {}
+        return s
+      }
+      return String(v)
+    }
+    const coercedRow = { ...row, interview_slot: coerce((row as any).interview_slot), confirmed_availability: coerce((row as any).confirmed_availability), availability: coerce((row as any).availability), f2f: coerce((row as any).f2f) }
+    setForm({ ...coercedRow })
     setDrawerOpen(true)
   }
 
@@ -129,7 +141,19 @@ export default function RecruitmentDashboard() {
         const row = data.find((d: any) => String(d.id) === String(q))
         if (row) {
           setEditingId(q)
-          setForm({ ...row })
+          const coerce2 = (v: any) => {
+            if (v == null || v === '') return ''
+            if (typeof v === 'object') return v
+            if (typeof v === 'string') {
+              const s = v.trim()
+              if (!s) return ''
+              try { const j = JSON.parse(s); if (j && typeof j === 'object') return j } catch (e) {}
+              return s
+            }
+            return String(v)
+          }
+          const coerced = { ...row, interview_slot: coerce2((row as any).interview_slot), confirmed_availability: coerce2((row as any).confirmed_availability), availability: coerce2((row as any).availability), f2f: coerce2((row as any).f2f) }
+          setForm({ ...coerced })
           setDrawerOpen(true)
         }
       }
@@ -146,10 +170,22 @@ export default function RecruitmentDashboard() {
     if (rows.length > 0) {
       const p = rows[0]
       setEditingId(null)
+      const coerce = (v: any) => {
+        if (v == null || v === '') return ''
+        if (typeof v === 'object') return v
+        if (typeof v === 'string') {
+          const s = v.trim()
+          if (!s) return ''
+          try { const j = JSON.parse(s); if (j && typeof j === 'object') return j } catch (e) {}
+          return s
+        }
+        return String(v)
+      }
+
       setForm({
         role: p.job_role || p.role || '',
         name: p.name || '',
-        date: new Date().toISOString().slice(0, 10),
+        date: p.date || new Date().toISOString().slice(0, 10),
         exp: p.experience ? String(p.experience) : '',
         cctc: p.current_ctc ? String(p.current_ctc) : '',
         ectc: p.expected_ctc ? String(p.expected_ctc) : '',
@@ -158,11 +194,13 @@ export default function RecruitmentDashboard() {
         linkedin: p.linkedin || '',
         location: p.current_location || '',
         np: p.notice_period || '',
-        availability: p.availability || '',
-        intstatus: p.intstatus || '',
+          availability: coerce(p.availability),
+          intstatus: p.intstatus || '',
+          interview_slot: coerce(p.interview_slot),
+          confirmed_availability: coerce(p.confirmed_availability),
         selstatus: p.selstatus || 'progress',
         remarks: p.remarks || '',
-        f2f: p.f2f || ''
+        f2f: coerce(p.f2f)
       })
       addToast('Form populated from CSV (first row)', 'info', 1500)
     }

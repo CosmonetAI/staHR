@@ -242,6 +242,20 @@ tbody tr:hover{background:var(--row-hover);cursor:pointer}
 .field-row{display:flex;gap:12px;margin-bottom:14px}
 .field{flex:1;margin-bottom:14px}
 .field-row .field{margin-bottom:0}
+
+/* Wider date inputs for recruitment form */
+.field-row.wide-dates{gap:12px}
+.field-row.wide-dates .field{flex:1 1 50%;min-width:160px}
+.field-row.wide-dates .field .date-input,
+.field-row.wide-dates .field input,
+.field-row.wide-dates .field .react-datepicker__input-container input{width:100%}
+.field-row.wide-dates .field label{white-space:nowrap}
+
+/* Ensure datepicker inputs match regular field input widths */
+.field .react-datepicker-wrapper{width:100%}
+.field .react-datepicker__input-container{width:100%}
+.field .react-datepicker__input-container input,
+.field .date-input{width:100% !important;display:block}
 .field label{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink-soft);margin-bottom:5px}
 .field input, .field select, .field textarea{width:100%;border:1px solid var(--line-strong);border-radius:6px;padding:9px 11px;font-size:13px;font-family:'Inter',sans-serif;color:var(--ink);background:var(--white)}
 .field textarea{resize:vertical;min-height:52px;font-family:'Inter',sans-serif}
