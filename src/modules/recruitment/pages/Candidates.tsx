@@ -69,6 +69,9 @@ export default function Candidates() {
   const [jobsMap, setJobsMap] = useState<Record<string, any>>({})
   const [clientFeedbackEdits, setClientFeedbackEdits] = useState<Record<string,string>>({})
 
+  const [currentPage, setCurrentPage] = useState(1);
+const recordsPerPage = 10;
+
   // load jobs once into a lookup map keyed by job_id, job_ref, and id
   React.useEffect(() => {
     let mounted = true
@@ -427,6 +430,15 @@ export default function Candidates() {
     return () => { mounted = false }
   }, [expandedId, rows, jobsMap])
 
+  const indexOfLastRecord = currentPage * recordsPerPage;
+const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
+
+const currentRows = filteredRows.slice(
+  indexOfFirstRecord,
+  indexOfLastRecord
+);
+const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
+
   return (
     <div className="container">
       <h2>Candidates</h2>
@@ -623,7 +635,7 @@ export default function Candidates() {
                 </tr>
               </thead>
               <tbody>
-                {filteredRows.map((c: any) => {
+                {currentRows.map((c: any) => {
                   const stageIdx = STAGE_ORDER.indexOf(c.selstatus)
                   const isSelected = selectedIds.includes(c.id)
                   return (
@@ -911,7 +923,7 @@ export default function Candidates() {
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12, marginBottom: 12 }}>
-              {filteredRows.map((c: any) => (
+              {currentRows.map((c: any) => (
                 <div key={c.id} className="card" style={{ padding: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
@@ -934,6 +946,32 @@ export default function Candidates() {
           )}
         </div>
       )}
+
+      <div className="pagination-container">
+  <button
+    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+    disabled={currentPage === 1}
+  >
+    Previous
+  </button>
+
+  {Array.from({ length: totalPages }, (_, i) => (
+    <button
+      key={i}
+      className={currentPage === i + 1 ? "active" : ""}
+      onClick={() => setCurrentPage(i + 1)}
+    >
+      {i + 1}
+    </button>
+  ))}
+
+  <button
+    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+    disabled={currentPage === totalPages}
+  >
+    Next
+  </button>
+</div>
 
       {/* Candidate add/edit drawer */}
       <div className={`overlay ${drawerOpen ? 'open' : ''}`} onClick={() => { setDrawerOpen(false); setEditingId(null) }} />
