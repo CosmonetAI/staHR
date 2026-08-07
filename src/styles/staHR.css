@@ -207,6 +207,7 @@ tbody tr:hover{background:var(--row-hover);cursor:pointer}
 .icon-btn:hover{border-color:var(--primary);background:#eff6ff;color:var(--primary);transform:translateY(-1px)}
 .icon-btn.del{color:var(--status-rejected);border-color:#fecaca;background:#fff}
 .icon-btn.del:hover{border-color:var(--status-rejected);background:var(--status-rejected-bg);color:var(--status-rejected)}
+.icon-btn.active{background:var(--primary);color:var(--white);border-color:var(--primary);box-shadow:0 6px 18px rgba(30,58,138,0.12)}
 .candidate-profile-panel{border:1px solid var(--line);background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);border-radius:10px;padding:14px 16px;box-shadow:0 8px 24px rgba(15,23,42,0.06)}
 .candidate-profile-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:12px;border-bottom:1px solid var(--line)}
 .candidate-profile-identity{display:flex;align-items:center;gap:12px;min-width:0}
