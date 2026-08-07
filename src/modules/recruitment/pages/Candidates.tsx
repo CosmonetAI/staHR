@@ -69,6 +69,10 @@ export default function Candidates() {
   const [jobsMap, setJobsMap] = useState<Record<string, any>>({})
   const [clientFeedbackEdits, setClientFeedbackEdits] = useState<Record<string,string>>({})
 
+  React.useEffect(() => {
+    setCurrentPage(1);
+}, [search, statusFilters, selectedRoles, sortFields]);
+
   const [currentPage, setCurrentPage] = useState(1);
 const recordsPerPage = 10;
 
