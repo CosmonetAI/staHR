@@ -80,13 +80,9 @@ export default function ClientsPage() {
   return (
     <div className="container">
       <div className="jobs-page-head" style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <h2>Clients</h2>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" className={`icon-toggle ${viewMode === 'row' ? 'active' : ''}`} onClick={() => setViewMode('row')} title="List view"><FaList /></button>
-            <button type="button" className={`icon-toggle ${viewMode === 'card' ? 'active' : ''}`} onClick={() => setViewMode('card')} title="Card view"><FaThLarge /></button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <h2>Clients</h2>
           </div>
-        </div>
         <div>
           <button className="btn btn-primary" onClick={openNew}>+ Onboard Client</button>
         </div>
@@ -109,6 +105,10 @@ export default function ClientsPage() {
               </div>
             </div>
           )}
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button type="button" className={`icon-btn ${viewMode === 'row' ? 'active' : ''}`} onClick={() => setViewMode('row')} title="List view"><FaList /></button>
+          <button type="button" className={`icon-btn ${viewMode === 'card' ? 'active' : ''}`} onClick={() => setViewMode('card')} title="Card view"><FaThLarge /></button>
         </div>
       </div>
 
