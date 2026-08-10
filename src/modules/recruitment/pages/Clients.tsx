@@ -18,6 +18,7 @@ export default function ClientsPage() {
   const [hasPhone, setHasPhone] = useState<boolean | null>(null)
   const [hasNotes, setHasNotes] = useState<boolean | null>(null)
   const addToast = useToast()
+  const [errors, setErrors] = React.useState<Record<string,string>>({})
 
   useEffect(() => {
     let mounted = true
@@ -46,13 +47,21 @@ export default function ClientsPage() {
   }, [clients, search, hasEmail, hasPhone, hasNotes])
 
   function openNew() { setEditing({ name: '', email: '', phone: '', notes: '' }) }
-  function close() { setEditing(null) }
+  function close() { setEditing(null);setErrors({}) }
 
-  async function save() {
+  const clearError = (field: string) => {
+    setErrors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors[field];
+      return newErrors;
+    });
+  };
+
+  /* async function save() {
     try {
       if (!editing) return
-      if (!editing.name || !String(editing.name).trim()) { addToast('Name is required', 'error'); return }
-      if (!editing.email || !String(editing.email).trim()) { addToast('Email is required for onboarding', 'error'); return }
+      if (!editing.name || !String(editing.name).trim()) 
+      if (!editing.email || !String(editing.email).trim()) 
       if (editing.id) {
         const updated = await ClientService.update(String(editing.id), editing)
         setClients(prev => [updated, ...prev.filter(c => String(c.id) !== String(updated.id))])
@@ -67,7 +76,43 @@ export default function ClientsPage() {
       addToast('Save failed: ' + (e?.message || String(e)), 'error')
     }
   }
+ */
+async function save() {
+  try {
+    if (!editing) return;
 
+    const newErrors: any = {};
+
+    if (!editing.name || !String(editing.name).trim()) {
+      newErrors.name = "Client name is required";
+    }
+
+    if (!editing.email || !String(editing.email).trim()) {
+      newErrors.email = "Email is required";
+    }
+
+    setErrors(newErrors);
+
+    // Stop saving if there are errors
+    if (Object.keys(newErrors).length > 0) {
+      return;
+    }
+
+    if (editing.id) {
+      const updated = await ClientService.update(String(editing.id), editing);
+      setClients(prev => [updated, ...prev.filter(c => String(c.id) !== String(updated.id))]);
+      addToast("Client updated", "success");
+    } else {
+      const created = await ClientService.create(editing);
+      setClients(prev => [created, ...prev]);
+      addToast("Client created and invitation sent", "success");
+    }
+
+    close();
+  } catch (e: any) {
+    addToast("Save failed: " + (e?.message || String(e)), "error");
+  }
+}
   async function remove(c: any) {
     if (!confirm('Delete client?')) return
     try {
@@ -173,11 +218,13 @@ export default function ClientsPage() {
             <div className="drawer-body">
               <div className="field">
                 <label>Client name *</label>
-                <input value={editing.name || ''} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+                <input value={editing.name || ''} onChange={(e) => {setEditing({ ...editing, name: e.target.value }); clearError('name');}} />
+                {errors.name && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{errors.name}</div>}
               </div>
               <div className="field">
-                <label>Email</label>
-                <input value={editing.email || ''} onChange={(e) => setEditing({ ...editing, email: e.target.value })} />
+                <label>Email *</label>
+                <input value={editing.email || ''} onChange={(e) => {setEditing({ ...editing, email: e.target.value }); clearError('email');}} />
+                {errors.email && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{errors.email}</div>}
               </div>
               <div className="field">
                 <label>Phone</label>

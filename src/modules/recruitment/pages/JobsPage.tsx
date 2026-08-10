@@ -48,6 +48,14 @@ export default function JobsPage() {
     return m
   }, [clients])
 
+  const clearError = (field: string) => {
+    setJobErrors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors[field];
+      return newErrors;
+    });
+  };
+
   useEffect(() => {
     let mounted = true
     ;(async () => {
@@ -124,6 +132,7 @@ export default function JobsPage() {
   function closeNewJob() {
     setNewJob(null)
     setAutoFilledFields([])
+    setJobErrors({})
   }
 
   function applyParsedToNewJob(data: ParsedJobDescription) {
@@ -534,12 +543,12 @@ export default function JobsPage() {
                 <div className="field-row">
                 <div className="field">
                   <label>Job title *</label>
-                  <input required placeholder="e.g. Software Engineer" value={newJob.title} onChange={(e) => setNewJob({ ...newJob, title: e.target.value })} style={autoFilledFields.includes('title') ? { outline: '2px solid #1976d2' } : undefined} />
+                  <input required placeholder="e.g. Software Engineer" value={newJob.title} onChange={(e) => {setNewJob({ ...newJob, title: e.target.value }); clearError('title');}} style={autoFilledFields.includes('title') ? { outline: '2px solid #1976d2' } : undefined} />
                   {jobErrors.title && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{jobErrors.title}</div>}
                 </div>
                 <div className="field">
                   <label>Location *</label>
-                  <input required placeholder="e.g. Bengaluru, India" value={newJob.location} onChange={(e) => setNewJob({ ...newJob, location: e.target.value })} style={autoFilledFields.includes('location') ? { outline: '2px solid #1976d2' } : undefined} />
+                  <input required placeholder="e.g. Bengaluru, India" value={newJob.location} onChange={(e) => {setNewJob({ ...newJob, location: e.target.value }); clearError('location');}} style={autoFilledFields.includes('location') ? { outline: '2px solid #1976d2' } : undefined} />
                   {jobErrors.location && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{jobErrors.location}</div>}
                 </div>
               </div>

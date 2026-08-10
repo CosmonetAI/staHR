@@ -424,7 +424,7 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
 
       <div className="drawer-foot">
         <div style={{ flex: 1 }} />
-        <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+        <button className="btn btn-ghost" onClick={() => { onCancel(); setErrors({}); }}>Cancel</button>
         <button className="btn btn-primary" onClick={handleSave}>{editingId ? 'Save Candidate' : 'Save Candidate'}</button>
       </div>
     </>
