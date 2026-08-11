@@ -41,8 +41,20 @@ body{margin:0;background:var(--paper);color:var(--ink);font-family:'Inter',sans-
 .sidebar a { text-decoration: none; }
 .sidebar .role-count { background: var(--line); color: var(--primary); }
 .sidebar{padding:28px 18px}
-.sidebar-brand-wrap{margin-bottom:34px}
-.sidebar-brand{font-size:20px;font-weight:800;color:var(--ink)}
+.sidebar-brand-wrap{margin-bottom:18px}
+.sidebar-brand{font-size:20px;font-weight:800;color:var(--ink);display:flex;justify-content:center;padding-top:14px;padding-bottom:10px}
+/* Sidebar logo wrapper crops whitespace and centers the artwork */
+.sidebar-logo-wrap{width:auto;height:120px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.sidebar-brand .sidebar-logo{width:160px;max-width:90%;height:auto;display:block;object-fit:contain}
+
+/* Spacing between logo and navigation */
+.sidebar-brand-wrap{margin-bottom:18px}
+
+/* Responsive adjustments */
+@media (max-width:640px){
+  .sidebar-logo-wrap{width:120px;height:110px}
+  .sidebar-brand .sidebar-logo{width:120px}
+}
 .sidebar-nav{display:flex;flex-direction:column;gap:8px}
 .sidebar-group{display:flex;flex-direction:column;gap:6px}
 .sidebar-group-head{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--ink);font-weight:700;font-size:14px;cursor:pointer;padding:9px 10px 9px 14px;border-radius:8px}

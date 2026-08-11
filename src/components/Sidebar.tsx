@@ -10,7 +10,11 @@ export default function Sidebar() {
   return (
     <div className="sidebar">
       <div className="sidebar-brand-wrap">
-        <div className="sidebar-brand">staHR</div>
+        <div className="sidebar-brand">
+          <div className="sidebar-logo-wrap">
+            <img src="/assets/logo3.png" alt="staHR logo" className="sidebar-logo" />
+          </div>
+        </div>
       </div>
 
       <nav className="sidebar-nav">
