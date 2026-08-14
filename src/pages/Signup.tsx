@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useAuth } from '../hooks/useAuth'
@@ -30,6 +30,7 @@ const zodResolverInline = (schema: z.ZodTypeAny) => async (values: any) => {
 export default function Signup() {
   const { signUp } = useAuth() as any
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { register, handleSubmit, formState: { errors } } = useForm<Form>({ resolver: zodResolverInline(schema) as any })
   const [loading, setLoading] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
@@ -43,12 +44,14 @@ export default function Signup() {
       // If Supabase returned a session/user (auto-signed-in), redirect to app
       const signedUser = res?.user ?? res?.session?.user ?? null
       if (signedUser) {
-        navigate('/')
+        const redirect = searchParams.get('redirect')
+        if (/^https?:\/\//i.test(redirect || '')) window.location.href = redirect || '/'
+        else navigate(redirect && redirect.startsWith('/') ? redirect : '/')
         return
       }
       // Otherwise show confirmation instructions and redirect to login
       setInfoMessage('Check your email for a confirmation link. After confirming, return to login to sign in.')
-      navigate('/login')
+      navigate(`/login${searchParams.get('redirect') ? `?redirect=${encodeURIComponent(searchParams.get('redirect') || '')}` : ''}`)
     } catch (err: any) {
       setServerError(err?.message || String(err))
     } finally {

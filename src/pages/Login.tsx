@@ -36,13 +36,25 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
 
+  const goToRedirect = () => {
+    const redirect = searchParams.get('redirect')
+    if (!redirect) {
+      navigate('/')
+      return
+    }
+    if (/^https?:\/\//i.test(redirect)) {
+      window.location.href = redirect
+      return
+    }
+    navigate(redirect.startsWith('/') ? redirect : '/')
+  }
+
   const onSubmit = async (data: Form) => {
     setServerError(null)
     setLoading(true)
     try {
       await signIn(data.email, data.password)
-      const redirect = searchParams.get('redirect')
-      navigate(redirect && redirect.startsWith('/') ? redirect : '/')
+      goToRedirect()
     } catch (err: any) {
       const msg = err?.message || String(err)
       console.error('SignIn error', err)
@@ -82,7 +94,7 @@ export default function Login() {
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <label style={{ fontSize: 13 }}><input type="checkbox" style={{ marginRight: 8 }} /> Remember me</label>
-            <Link style={{ fontSize: 13, color: 'var(--primary)' }} to="/reset">Forgot?</Link>
+            <Link style={{ fontSize: 13, color: 'var(--primary)' }} to={`/reset${searchParams.get('redirect') ? `?redirect=${encodeURIComponent(searchParams.get('redirect') || '')}` : ''}`}>Forgot?</Link>
           </div>
 
           {serverError && <div className="field-error" style={{ marginBottom: 12 }}>{serverError}</div>}
@@ -92,7 +104,7 @@ export default function Login() {
           </button>
         </form>
         <div style={{ marginTop: 12, textAlign: 'center' }}>
-          <Link to="/signup">Create an account</Link>
+          <Link to={`/signup${searchParams.get('redirect') ? `?redirect=${encodeURIComponent(searchParams.get('redirect') || '')}` : ''}`}>Create an account</Link>
         </div>
       </div>
     </div>
