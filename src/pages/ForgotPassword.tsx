@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useAuth } from '../hooks/useAuth'
@@ -27,7 +27,6 @@ const zodResolverInline = (schema: z.ZodTypeAny) => async (values: any) => {
 
 export default function ForgotPassword() {
   const { resetPassword } = useAuth()
-  const [searchParams] = useSearchParams()
   const { register, handleSubmit, formState: { errors } } = useForm<Form>({ resolver: zodResolverInline(schema) as any })
   const [loading, setLoading] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
@@ -75,7 +74,7 @@ export default function ForgotPassword() {
         </form>
 
         <div style={{ marginTop: 16, textAlign: 'center' }}>
-          <Link style={{ fontSize: 13, color: 'var(--primary)' }} to={`/login${searchParams.get('redirect') ? `?redirect=${encodeURIComponent(searchParams.get('redirect') || '')}` : ''}`}>Back to login</Link>
+          <Link style={{ fontSize: 13, color: 'var(--primary)' }} to="/login">Back to login</Link>
         </div>
       </div>
     </div>
