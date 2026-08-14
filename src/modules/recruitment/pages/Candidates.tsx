@@ -28,6 +28,18 @@ import { JobService } from '../services/jobService'
 import { useAuth } from '../../../hooks/useAuth'
 import { supabase } from '../../../supabase/supabaseClient'
 
+function splitJobSkills(job: Record<string, any>): string[] {
+  const raw = [job.technical_skills, job.preferred_skills, job.primarySkills, job.secondarySkills]
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .filter(Boolean)
+
+  return raw
+    .flatMap((value) => String(value)
+      .split(/[,;|/]/)
+      .map((part) => part.trim())
+      .filter(Boolean))
+}
+
 export default function Candidates() {
   const { user, isClient } = useAuth()
   const location = useLocation()
@@ -53,6 +65,11 @@ export default function Candidates() {
   const addToast = useToast()
   const [lastChange, setLastChange] = useState<{id:string, prev:string} | null>(null)
   const [search, setSearch] = useState('')
+  const [skillFilter, setSkillFilter] = useState('')
+  const [locationFilter, setLocationFilter] = useState('')
+  const [jobFilter, setJobFilter] = useState('')
+  const [stageFilter, setStageFilter] = useState('')
+  const [experienceFilter, setExperienceFilter] = useState('')
   const [statusFilters, setStatusFilters] = useState<string[]>([])
   const [dateFrom, setDateFrom] = useState<string>('')
   const [dateTo, setDateTo] = useState<string>('')
@@ -101,6 +118,25 @@ const recordsPerPage = 10;
     if (role) setSelectedRoles([role])
   }, [location.search])
 
+  React.useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const q = params.get('search') || ''
+    const skill = params.get('skill') || ''
+    const loc = params.get('location') || ''
+    const job = params.get('job') || ''
+    const stage = params.get('stage') || ''
+    const exp = params.get('exp') || ''
+    const status = params.get('status') || ''
+
+    if (q) setSearch(q)
+    setSkillFilter(skill)
+    setLocationFilter(loc)
+    setJobFilter(job)
+    setStageFilter(stage)
+    setExperienceFilter(exp)
+    if (status) setStatusFilters([status])
+  }, [location.search])
+
   // If navigated from a job Apply action, prefill and open the Add Candidate drawer
   React.useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -139,6 +175,25 @@ const recordsPerPage = 10;
     if (s.includes('hold')) return 'hold'
     if (s.includes('drop')) return 'dropped'
     return 'progress'
+  }
+
+  function parseYears(value: any) {
+    const m = String(value ?? '').match(/\d+(\.\d+)?/)
+    if (!m) return null
+    const n = Number(m[0])
+    return Number.isFinite(n) ? n : null
+  }
+
+  function inferStage(row: any) {
+    const status = normalizedStatus(row.selstatus)
+    const intStatus = String(row.intstatus || '').toLowerCase()
+    if (status === 'selected') return 'selected'
+    if (intStatus.includes('final')) return 'final_round'
+    if (intStatus.includes('interview') || row.interview_slot || row.confirmed_availability || row.f2f) return 'interview'
+    if (intStatus.includes('shortlist')) return 'shortlisted'
+    if (intStatus.includes('screen')) return 'screening'
+    if (status === 'hold') return 'screening'
+    return 'applications'
   }
 
   function activityTime(row: any) {
@@ -270,6 +325,10 @@ const recordsPerPage = 10;
   const filteredRows = useMemo(() => {
     let tmp = rows.slice()
     if (selectedRoles.length) tmp = tmp.filter(r => selectedRoles.includes((r.role || 'Unassigned').toString()))
+    if (jobFilter) {
+      const needle = String(jobFilter).toLowerCase()
+      tmp = tmp.filter((d: any) => String(d.role || d.applied_job_title || '').toLowerCase() === needle)
+    }
     if (search) {
       const s = String(search).toLowerCase()
       tmp = tmp.filter((d: any) => {
@@ -287,6 +346,43 @@ const recordsPerPage = 10;
         }
         const combined = (base + ' ' + jobExtras).toLowerCase()
         return combined.includes(s)
+      })
+    }
+    if (skillFilter) {
+      const needle = String(skillFilter).toLowerCase()
+      tmp = tmp.filter((d: any) => {
+        const skills = String(d.skills || d.tags || d.technical_skills || '').toLowerCase()
+        const direct = skills.split(/[,;|/]/).map((s: string) => s.trim()).filter(Boolean).includes(needle)
+        if (direct) return true
+        try {
+          const key = String(d.applied_job_id || d.job_id || d.job_ref || '')
+          const job = jobsMap[key]
+          if (job) {
+            return splitJobSkills(job).some((s) => String(s).toLowerCase() === needle)
+          }
+        } catch (e) {
+          // ignore
+        }
+        return false
+      })
+    }
+    if (locationFilter) {
+      const needle = String(locationFilter).toLowerCase()
+      tmp = tmp.filter((d: any) => String(d.location || d.current_location || 'unknown').toLowerCase() === needle)
+    }
+    if (stageFilter) {
+      tmp = tmp.filter((d: any) => inferStage(d) === stageFilter)
+    }
+    if (experienceFilter) {
+      tmp = tmp.filter((d: any) => {
+        const years = parseYears(d.exp ?? d.experience)
+        if (years == null) return false
+        if (experienceFilter === '0-2') return years < 2
+        if (experienceFilter === '2-5') return years >= 2 && years < 5
+        if (experienceFilter === '5-8') return years >= 5 && years < 8
+        if (experienceFilter === '8-12') return years >= 8 && years < 12
+        if (experienceFilter === '12+') return years >= 12
+        return true
       })
     }
     if (statusFilters.length) tmp = tmp.filter((d: any) => statusFilters.includes(normalizedStatus(d.selstatus)))
@@ -314,7 +410,7 @@ const recordsPerPage = 10;
       return 0
     })
     return tmp
-  }, [rows, selectedRoles, search, statusFilters, sortFields, jobsMap, dateFrom, dateTo])
+  }, [rows, selectedRoles, search, skillFilter, locationFilter, jobFilter, stageFilter, experienceFilter, statusFilters, sortFields, jobsMap, dateFrom, dateTo])
 
   // regenerate grouping from filtered rows so the UI shows filtered buckets
   const grouped = useMemo(() => {
