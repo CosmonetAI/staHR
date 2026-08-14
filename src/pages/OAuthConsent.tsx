@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabase/supabaseClient'
 
 type AuthorizationDetails = {
@@ -32,7 +32,6 @@ function isSalesAdvisorClient(details: AuthorizationDetails | null, clientName: 
 }
 
 export default function OAuthConsent() {
-  const navigate = useNavigate()
   const [params] = useSearchParams()
   const authorizationId = params.get('authorization_id') || ''
   const [details, setDetails] = useState<AuthorizationDetails | null>(null)
@@ -74,8 +73,8 @@ export default function OAuthConsent() {
       }
       const { data: sessionData } = await supabase.auth.getSession()
       if (!sessionData?.session) {
-        const redirect = `/oauth/consent?authorization_id=${encodeURIComponent(authorizationId)}`
-        navigate(`/oauth/login?app=sales-advisor&redirect=${encodeURIComponent(redirect)}`, { replace: true })
+        setError('This secure authorization link needs an active Cosmonet AI session. Please return to the app and sign in again.')
+        setLoading(false)
         return
       }
       try {
@@ -95,7 +94,7 @@ export default function OAuthConsent() {
     return () => {
       cancelled = true
     }
-  }, [authorizationId, navigate])
+  }, [authorizationId])
 
   useEffect(() => {
     if (loading || error || !details || approving || !salesAdvisorClient) return
@@ -110,14 +109,14 @@ export default function OAuthConsent() {
       <section className="oauth-auth-card">
         <div className="oauth-auth-brand" style={{ background: '#e8f8f4', color: '#17b89a' }}>
           <span className="oauth-auth-mark">C</span>
-          <span>{salesAdvisorClient ? 'Shopify workspace access' : 'Cosmonet secure access'}</span>
+          <span>{salesAdvisorClient ? 'Secure workspace access' : 'Cosmonet secure access'}</span>
         </div>
 
         {salesAdvisorClient ? (
           <>
             <h1>Finishing your access</h1>
             <p className="oauth-auth-subtitle">
-              Your password is set. We are securely connecting your account to AI Sales Advisor.
+              Your account is ready. We are securely connecting your access.
             </p>
           </>
         ) : (

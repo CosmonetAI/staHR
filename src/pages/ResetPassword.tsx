@@ -334,7 +334,7 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
         try {
           await signOut()
         } catch (_) {}
-        navigate(app === 'sales-advisor' ? `/oauth/login?app=sales-advisor${email ? `&email=${encodeURIComponent(email)}` : ''}` : '/login')
+        navigate('/login')
       }, 1200)
     } catch (err: any) {
       setNewPwdError(err?.message || String(err))
