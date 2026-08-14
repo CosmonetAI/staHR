@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import ResetPassword from './pages/ResetPassword'
+import OAuthConsent from './pages/OAuthConsent'
 import RecruitmentDashboard from './modules/recruitment/pages/RecruitmentDashboard'
 import Candidates from './modules/recruitment/pages/Candidates'
 import Upload from './modules/recruitment/pages/Upload'
@@ -26,6 +27,7 @@ export default function App() {
         <Route path="/signup" element={<Signup />} />
         <Route path="/reset" element={<ResetPassword />} />
         <Route path="/set-password" element={<ResetPassword />} />
+        <Route path="/oauth/consent" element={<OAuthConsent />} />
         <Route
           path="/recruitment"
           element={

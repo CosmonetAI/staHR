@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useAuth } from '../hooks/useAuth'
@@ -30,6 +30,7 @@ const zodResolverInline = (schema: z.ZodTypeAny) => async (values: any) => {
 export default function Login() {
   const { signIn } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { register, handleSubmit, formState: { errors } } = useForm<Form>({ resolver: zodResolverInline(schema) as any })
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -40,7 +41,8 @@ export default function Login() {
     setLoading(true)
     try {
       await signIn(data.email, data.password)
-      navigate('/')
+      const redirect = searchParams.get('redirect')
+      navigate(redirect && redirect.startsWith('/') ? redirect : '/')
     } catch (err: any) {
       const msg = err?.message || String(err)
       console.error('SignIn error', err)
