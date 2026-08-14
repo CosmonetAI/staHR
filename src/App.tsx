@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import Signup from './pages/Signup'
 import ResetPassword from './pages/ResetPassword'
 import OAuthConsent from './pages/OAuthConsent'
+import OAuthAuth from './pages/OAuthAuth'
 import RecruitmentDashboard from './modules/recruitment/pages/RecruitmentDashboard'
 import Candidates from './modules/recruitment/pages/Candidates'
 import Upload from './modules/recruitment/pages/Upload'
@@ -27,6 +28,9 @@ export default function App() {
         <Route path="/signup" element={<Signup />} />
         <Route path="/reset" element={<ResetPassword />} />
         <Route path="/set-password" element={<ResetPassword />} />
+        <Route path="/oauth/login" element={<OAuthAuth mode="login" />} />
+        <Route path="/oauth/signup" element={<OAuthAuth mode="signup" />} />
+        <Route path="/oauth/reset" element={<OAuthAuth mode="reset" />} />
         <Route path="/oauth/consent" element={<OAuthConsent />} />
         <Route
           path="/recruitment"

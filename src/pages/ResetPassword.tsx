@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { FaEye, FaEyeSlash } from 'react-icons/fa'
 import { useForm } from 'react-hook-form'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { z } from 'zod'
 import { supabase } from '../supabase/supabaseClient'
 import { useAuth } from '../hooks/useAuth'
@@ -50,6 +50,9 @@ const zodResolverInline = (schema: z.ZodTypeAny) => async (values: any) => {
 
 export default function ResetPassword() {
   const { register, handleSubmit, formState: { errors } } = useForm<Form>({ resolver: zodResolverInline(schema) as any })
+  const [searchParams] = useSearchParams()
+  const app = searchParams.get('app') || ''
+  const isOAuthBrand = app === 'sales-advisor'
   const [loading, setLoading] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
   const [infoMessage, setInfoMessage] = useState<string | null>(null)
@@ -88,16 +91,44 @@ export default function ResetPassword() {
     }
   }
 
-  return (
-    <div className="container">
-      <div className="card login-card" style={{ maxWidth: 520, margin: '48px auto' }}>
+  const content = (
+    <>
+      {isOAuthBrand ? (
+        <>
+          <div className="oauth-auth-brand" style={{ background: '#e8f8f4', color: '#17b89a' }}>
+            <span className="oauth-auth-mark">C</span>
+            <span>Shopify workspace access</span>
+          </div>
+          <h1>Set your AI Sales Advisor password</h1>
+          <p className="oauth-auth-subtitle">Create a password for your Cosmonet AI account, then continue securely to AI Sales Advisor.</p>
+        </>
+      ) : (
         <h2>Reset password</h2>
+      )}
         <ResetPasswordInner
           onRequestSubmit={onSubmit}
           serverError={serverError}
           infoMessage={infoMessage}
           loading={loading}
         />
+      {isOAuthBrand ? <p className="oauth-auth-footer">Secure account access by Cosmonet AI</p> : null}
+    </>
+  )
+
+  if (isOAuthBrand) {
+    return (
+      <main className="oauth-auth-shell">
+        <section className="oauth-auth-card">
+          {content}
+        </section>
+      </main>
+    )
+  }
+
+  return (
+    <div className="container">
+      <div className="card login-card" style={{ maxWidth: 520, margin: '48px auto' }}>
+        {content}
       </div>
     </div>
   )
@@ -231,7 +262,9 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
   }, [])
 
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { updatePassword, session, signOut } = useAuth()
+  const redirect = searchParams.get('redirect') || ''
 
   const handleNewPassword = async (vals: any) => {
     setNewPwdError(null)
@@ -243,6 +276,10 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
       const { error } = await updatePassword(vals.password)
       if (error) throw error
       setNewPwdMsg('Password updated successfully. Finalizing invite...')
+      if (redirect) {
+        window.location.href = redirect
+        return
+      }
       // Attempt to accept any pending invitation for this user (edge function)
       try {
         const accept = await supabase.functions.invoke('accept-invitation')

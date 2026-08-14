@@ -24,10 +24,12 @@ try {
         // ensure visible URL is the recovery path
         const base = window.location.origin || ''
         const recoveryPath = tokenType === 'set-password' ? '/set-password' : '/reset'
-        try { window.history.replaceState({}, '', base + recoveryPath + '?recovery=1') } catch (e) {}
+        const query = window.location.search ? `${window.location.search}&recovery=1` : '?recovery=1'
+        try { window.history.replaceState({}, '', base + recoveryPath + query) } catch (e) {}
       } catch (e) {
         try { sessionStorage.setItem('supabase_recovery', 'reset') } catch (e) {}
-        try { window.history.replaceState({}, '', (window.location.origin || '') + '/reset?recovery=1') } catch (e) {}
+        const query = window.location.search ? `${window.location.search}&recovery=1` : '?recovery=1'
+        try { window.history.replaceState({}, '', (window.location.origin || '') + '/reset' + query) } catch (e) {}
       }
     }
   }

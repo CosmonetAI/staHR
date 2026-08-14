@@ -72,7 +72,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               // replace URL to the appropriate recovery path (invite -> /set-password, recovery -> /reset)
               const base = window.location.origin || ''
               const recoveryPath = type === 'invite' ? '/set-password' : '/reset'
-              const newUrl = base + recoveryPath + '?recovery=1'
+              const query = window.location.search ? `${window.location.search}&recovery=1` : '?recovery=1'
+              const newUrl = base + recoveryPath + query
               console.debug('useAuth: replacing URL to', newUrl)
               window.history.replaceState({}, '', newUrl)
               // update user state quickly
@@ -89,7 +90,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           try {
             const base = window.location.origin || ''
             const recoveryPath = type === 'invite' ? '/set-password' : '/reset'
-            const newUrl = base + recoveryPath + '?recovery=1'
+            const query = window.location.search ? `${window.location.search}&recovery=1` : '?recovery=1'
+            const newUrl = base + recoveryPath + query
             window.history.replaceState({}, '', newUrl)
           } catch (e) {}
         } else {
