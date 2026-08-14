@@ -215,3 +215,13 @@ body{margin:0;font-family:Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe
   font-size: 12px;
   font-weight: 700;
 }
+
+.oauth-auth-footer a {
+  color: #0f766e;
+  text-decoration: none;
+  font-weight: 900;
+}
+
+.oauth-auth-footer a:hover {
+  text-decoration: underline;
+}

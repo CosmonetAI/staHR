@@ -10,6 +10,9 @@ const indexPath = path.join(distDir, "index.html");
 const PORT = Number(process.env.PORT) || 10000;
 const SUPABASE_URL = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "").replace(/\/+$/, "");
 const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || "");
+const SALES_ADVISOR_OAUTH_START_URL =
+  String(process.env.VITE_SALES_ADVISOR_OAUTH_START_URL || "") ||
+  "https://sales-backend-50mp.onrender.com/api/v1/auth/oauth/start";
 
 function send(res, statusCode, body, contentType = "text/plain; charset=utf-8") {
   res.statusCode = statusCode;
@@ -81,9 +84,40 @@ function json(res, statusCode, body) {
   send(res, statusCode, JSON.stringify(body), "application/json; charset=utf-8");
 }
 
+function jwtPayload(token) {
+  try {
+    const payload = String(token || "").split(".")[1] || "";
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+    return JSON.parse(Buffer.from(padded, "base64").toString("utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+function isTrustedOAuthContinue(value) {
+  try {
+    const expected = new URL(SALES_ADVISOR_OAUTH_START_URL);
+    const candidate = new URL(value);
+    return candidate.origin === expected.origin && candidate.pathname === expected.pathname;
+  } catch {
+    return false;
+  }
+}
+
 async function sendInviteSignup(req, res) {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    json(res, 500, { error: "OAuth server invite email is not configured." });
+    const missing = [];
+    if (!SUPABASE_URL) missing.push("VITE_SUPABASE_URL");
+    if (!SUPABASE_SERVICE_ROLE_KEY) missing.push("SUPABASE_SERVICE_ROLE_KEY");
+    json(res, 500, { error: "OAuth server invite email is not configured.", missing });
+    return;
+  }
+  if (jwtPayload(SUPABASE_SERVICE_ROLE_KEY)?.role !== "service_role") {
+    json(res, 500, {
+      error: "OAuth server invite email is misconfigured.",
+      detail: "SUPABASE_SERVICE_ROLE_KEY must be the service_role key, not the anon key.",
+    });
     return;
   }
 
@@ -109,7 +143,10 @@ async function sendInviteSignup(req, res) {
   const redirectTo = new URL("/set-password", `https://${req.headers.host || "localhost"}`);
   redirectTo.searchParams.set("app", app);
   redirectTo.searchParams.set("email", email);
-  if (redirect) redirectTo.searchParams.set("redirect", redirect);
+  if (isTrustedOAuthContinue(redirect)) {
+    redirectTo.searchParams.set("continue", redirect);
+    redirectTo.searchParams.set("oauth_redirect", redirect);
+  }
 
   const headers = {
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,

@@ -3,6 +3,10 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabase/supabaseClient'
 
 type Mode = 'login' | 'signup' | 'reset'
+const OAUTH_CONTINUE_STORAGE_KEY = 'cosmonet_oauth_continue_url'
+const SALES_ADVISOR_OAUTH_START_URL =
+  String(import.meta.env.VITE_SALES_ADVISOR_OAUTH_START_URL || '') ||
+  'https://sales-backend-50mp.onrender.com/api/v1/auth/oauth/start'
 
 const APP_COPY: Record<string, { name: string; eyebrow: string; color: string; soft: string }> = {
   'sales-advisor': {
@@ -21,6 +25,16 @@ const APP_COPY: Record<string, { name: string; eyebrow: string; color: string; s
 
 function isSafeRedirect(value: string) {
   return /^https?:\/\//i.test(value) || value.startsWith('/')
+}
+
+function isTrustedOAuthContinue(value: string) {
+  try {
+    const expected = new URL(SALES_ADVISOR_OAUTH_START_URL)
+    const candidate = new URL(value)
+    return candidate.origin === expected.origin && candidate.pathname === expected.pathname
+  } catch {
+    return false
+  }
 }
 
 function buildQuery(params: URLSearchParams, nextMode: Mode) {
@@ -96,7 +110,11 @@ export default function OAuthAuth({ mode }: { mode: Mode }) {
       if (mode === 'reset') {
         const resetUrl = new URL('/set-password', window.location.origin)
         resetUrl.searchParams.set('app', appKey)
-        if (redirect) resetUrl.searchParams.set('redirect', redirect)
+        if (isTrustedOAuthContinue(redirect)) {
+          resetUrl.searchParams.set('continue', redirect)
+          resetUrl.searchParams.set('oauth_redirect', redirect)
+          try { localStorage.setItem(OAUTH_CONTINUE_STORAGE_KEY, redirect) } catch (e) {}
+        }
         resetUrl.searchParams.set('email', normalizedEmail)
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
           redirectTo: resetUrl.toString()
@@ -107,6 +125,9 @@ export default function OAuthAuth({ mode }: { mode: Mode }) {
       }
 
       if (!fullName.trim()) throw new Error('Enter your brand or workspace name.')
+      if (isTrustedOAuthContinue(redirect)) {
+        try { localStorage.setItem(OAUTH_CONTINUE_STORAGE_KEY, redirect) } catch (e) {}
+      }
       const response = await fetch('/api/oauth/invite-signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -168,7 +189,10 @@ export default function OAuthAuth({ mode }: { mode: Mode }) {
           {mode !== 'reset' ? <Link to={buildQuery(params, 'reset')}>Forgot password?</Link> : null}
         </div>
 
-        <p className="oauth-auth-footer">Secure account access by Cosmonet AI</p>
+        <p className="oauth-auth-footer">
+          Secure account access by{' '}
+          <a href="https://cosmonet.ai" target="_blank" rel="noreferrer">Cosmonet AI</a>
+        </p>
       </section>
     </main>
   )

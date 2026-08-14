@@ -31,6 +31,20 @@ const hasRecoveryParams = () => {
 
 const schema = z.object({ email: z.string().email() })
 type Form = z.infer<typeof schema>
+const OAUTH_CONTINUE_STORAGE_KEY = 'cosmonet_oauth_continue_url'
+const SALES_ADVISOR_OAUTH_START_URL =
+  String(import.meta.env.VITE_SALES_ADVISOR_OAUTH_START_URL || '') ||
+  'https://sales-backend-50mp.onrender.com/api/v1/auth/oauth/start'
+
+function isTrustedOAuthContinue(value: string) {
+  try {
+    const expected = new URL(SALES_ADVISOR_OAUTH_START_URL)
+    const candidate = new URL(value)
+    return candidate.origin === expected.origin && candidate.pathname === expected.pathname
+  } catch {
+    return false
+  }
+}
 
 const zodResolverInline = (schema: z.ZodTypeAny) => async (values: any) => {
   try {
@@ -111,7 +125,12 @@ export default function ResetPassword() {
           infoMessage={infoMessage}
           loading={loading}
         />
-      {isOAuthBrand ? <p className="oauth-auth-footer">Secure account access by Cosmonet AI</p> : null}
+      {isOAuthBrand ? (
+        <p className="oauth-auth-footer">
+          Secure account access by{' '}
+          <a href="https://cosmonet.ai" target="_blank" rel="noreferrer">Cosmonet AI</a>
+        </p>
+      ) : null}
     </>
   )
 
@@ -136,6 +155,10 @@ export default function ResetPassword() {
 
 function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading }: any) {
   const { register, handleSubmit, formState: { errors } } = useForm<any>({ resolver: async (v: any) => ({ values: v, errors: {} }) })
+  const [searchParams] = useSearchParams()
+  const app = searchParams.get('app') || ''
+  const email = searchParams.get('email') || ''
+  const isOAuthBrand = app === 'sales-advisor'
   const [isRecovery, setIsRecovery] = useState(() => {
     try {
       const stored = typeof window !== 'undefined' ? sessionStorage.getItem('supabase_recovery') : null
@@ -262,9 +285,19 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
   }, [])
 
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
   const { updatePassword, session, signOut } = useAuth()
-  const redirect = searchParams.get('redirect') || ''
+  const candidateRedirect =
+    searchParams.get('continue') ||
+    searchParams.get('oauth_redirect') ||
+    searchParams.get('redirect') ||
+    (() => {
+      try { return localStorage.getItem(OAUTH_CONTINUE_STORAGE_KEY) || '' } catch (e) { return '' }
+    })()
+  const redirect = isTrustedOAuthContinue(candidateRedirect)
+    ? candidateRedirect
+    : app === 'sales-advisor'
+      ? SALES_ADVISOR_OAUTH_START_URL
+      : ''
 
   const handleNewPassword = async (vals: any) => {
     setNewPwdError(null)
@@ -277,6 +310,7 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
       if (error) throw error
       setNewPwdMsg('Password updated successfully. Finalizing invite...')
       if (redirect) {
+        try { localStorage.removeItem(OAUTH_CONTINUE_STORAGE_KEY) } catch (e) {}
         window.location.href = redirect
         return
       }
@@ -300,7 +334,7 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
         try {
           await signOut()
         } catch (_) {}
-        navigate('/login')
+        navigate(app === 'sales-advisor' ? `/oauth/login?app=sales-advisor${email ? `&email=${encodeURIComponent(email)}` : ''}` : '/login')
       }, 1200)
     } catch (err: any) {
       setNewPwdError(err?.message || String(err))
@@ -313,12 +347,16 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
     // Show form to set new password (requires session created by Supabase on redirect)
     return (
       <div>
-        <div style={{ marginBottom: 8, padding: 8, background: '#fff7ed', border: '1px solid #ffedd5', borderRadius: 6 }}>
-          <strong>Recovery mode:</strong> This page is handling a password recovery callback.
-        </div>
-        <div style={{ marginBottom: 12 }}>Set a new password for your account.</div>
+        {!isOAuthBrand ? (
+          <>
+            <div style={{ marginBottom: 8, padding: 8, background: '#fff7ed', border: '1px solid #ffedd5', borderRadius: 6 }}>
+              <strong>Recovery mode:</strong> This page is handling a password recovery callback.
+            </div>
+            <div style={{ marginBottom: 12 }}>Set a new password for your account.</div>
+          </>
+        ) : null}
         {!sessionExists && !session && <div style={{ marginBottom: 12 }} className="field-error">Unable to detect a recovery session. Make sure you clicked the link from your email and the redirect URL matches this app. You may still set a password but it may fail if the session is missing.</div>}
-        <form onSubmit={handleSubmit(handleNewPassword)} className="login-form" noValidate>
+        <form onSubmit={handleSubmit(handleNewPassword)} className={isOAuthBrand ? 'oauth-auth-form' : 'login-form'} noValidate>
           <div className="field" style={{ marginBottom: 12 }}>
             <label className="field-label">New password</label>
             <div style={{ position: 'relative' }}>
@@ -339,7 +377,12 @@ function ResetPasswordInner({ onRequestSubmit, serverError, infoMessage, loading
           </div>
           {newPwdError && <div className="field-error" style={{ marginBottom: 12 }}>{newPwdError}</div>}
           {newPwdMsg && <div style={{ marginBottom: 12, background: '#f8fafc', padding: 10, borderRadius: 6 }}>{newPwdMsg}</div>}
-          <button type="submit" className="btn btn-primary submit-btn" disabled={newPwdLoading || !sessionExists}>
+          <button
+            type="submit"
+            className={isOAuthBrand ? '' : 'btn btn-primary submit-btn'}
+            style={isOAuthBrand ? { background: '#17b89a' } : undefined}
+            disabled={newPwdLoading || !sessionExists}
+          >
             {newPwdLoading ? <span className="spinner" aria-hidden="true" /> : 'Set new password'}
           </button>
         </form>
