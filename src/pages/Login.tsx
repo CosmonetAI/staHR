@@ -31,13 +31,22 @@ export default function Login() {
   const { signIn } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { register, handleSubmit, formState: { errors } } = useForm<Form>({ resolver: zodResolverInline(schema) as any })
+  const redirect = searchParams.get('redirect') || ''
+  const email = searchParams.get('email') || ''
+  const linkedParams = new URLSearchParams()
+  if (redirect) linkedParams.set('redirect', redirect)
+  if (email) linkedParams.set('email', email)
+  const linkedQuery = linkedParams.toString()
+  const linkedSuffix = linkedQuery ? `?${linkedQuery}` : ''
+  const { register, handleSubmit, formState: { errors } } = useForm<Form>({
+    resolver: zodResolverInline(schema) as any,
+    defaultValues: { email }
+  })
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
 
   const goToRedirect = () => {
-    const redirect = searchParams.get('redirect')
     if (!redirect) {
       navigate('/')
       return
@@ -94,7 +103,7 @@ export default function Login() {
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <label style={{ fontSize: 13 }}><input type="checkbox" style={{ marginRight: 8 }} /> Remember me</label>
-            <Link style={{ fontSize: 13, color: 'var(--primary)' }} to={`/reset${searchParams.get('redirect') ? `?redirect=${encodeURIComponent(searchParams.get('redirect') || '')}` : ''}`}>Forgot?</Link>
+            <Link style={{ fontSize: 13, color: 'var(--primary)' }} to={`/reset${linkedSuffix}`}>Forgot?</Link>
           </div>
 
           {serverError && <div className="field-error" style={{ marginBottom: 12 }}>{serverError}</div>}
@@ -104,7 +113,7 @@ export default function Login() {
           </button>
         </form>
         <div style={{ marginTop: 12, textAlign: 'center' }}>
-          <Link to={`/signup${searchParams.get('redirect') ? `?redirect=${encodeURIComponent(searchParams.get('redirect') || '')}` : ''}`}>Create an account</Link>
+          <Link to={`/signup${linkedSuffix}`}>Create an account</Link>
         </div>
       </div>
     </div>

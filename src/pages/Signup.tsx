@@ -31,7 +31,17 @@ export default function Signup() {
   const { signUp } = useAuth() as any
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { register, handleSubmit, formState: { errors } } = useForm<Form>({ resolver: zodResolverInline(schema) as any })
+  const redirect = searchParams.get('redirect') || ''
+  const email = searchParams.get('email') || ''
+  const linkedParams = new URLSearchParams()
+  if (redirect) linkedParams.set('redirect', redirect)
+  if (email) linkedParams.set('email', email)
+  const linkedQuery = linkedParams.toString()
+  const linkedSuffix = linkedQuery ? `?${linkedQuery}` : ''
+  const { register, handleSubmit, formState: { errors } } = useForm<Form>({
+    resolver: zodResolverInline(schema) as any,
+    defaultValues: { email }
+  })
   const [loading, setLoading] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
   const [infoMessage, setInfoMessage] = useState<string | null>(null)
@@ -44,14 +54,13 @@ export default function Signup() {
       // If Supabase returned a session/user (auto-signed-in), redirect to app
       const signedUser = res?.user ?? res?.session?.user ?? null
       if (signedUser) {
-        const redirect = searchParams.get('redirect')
         if (/^https?:\/\//i.test(redirect || '')) window.location.href = redirect || '/'
         else navigate(redirect && redirect.startsWith('/') ? redirect : '/')
         return
       }
       // Otherwise show confirmation instructions and redirect to login
       setInfoMessage('Check your email for a confirmation link. After confirming, return to login to sign in.')
-      navigate(`/login${searchParams.get('redirect') ? `?redirect=${encodeURIComponent(searchParams.get('redirect') || '')}` : ''}`)
+      navigate(`/login${linkedSuffix}`)
     } catch (err: any) {
       setServerError(err?.message || String(err))
     } finally {

@@ -28,7 +28,17 @@ const zodResolverInline = (schema: z.ZodTypeAny) => async (values: any) => {
 export default function ForgotPassword() {
   const { resetPassword } = useAuth()
   const [searchParams] = useSearchParams()
-  const { register, handleSubmit, formState: { errors } } = useForm<Form>({ resolver: zodResolverInline(schema) as any })
+  const redirect = searchParams.get('redirect') || ''
+  const email = searchParams.get('email') || ''
+  const linkedParams = new URLSearchParams()
+  if (redirect) linkedParams.set('redirect', redirect)
+  if (email) linkedParams.set('email', email)
+  const linkedQuery = linkedParams.toString()
+  const linkedSuffix = linkedQuery ? `?${linkedQuery}` : ''
+  const { register, handleSubmit, formState: { errors } } = useForm<Form>({
+    resolver: zodResolverInline(schema) as any,
+    defaultValues: { email }
+  })
   const [loading, setLoading] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
@@ -75,7 +85,7 @@ export default function ForgotPassword() {
         </form>
 
         <div style={{ marginTop: 16, textAlign: 'center' }}>
-          <Link style={{ fontSize: 13, color: 'var(--primary)' }} to={`/login${searchParams.get('redirect') ? `?redirect=${encodeURIComponent(searchParams.get('redirect') || '')}` : ''}`}>Back to login</Link>
+          <Link style={{ fontSize: 13, color: 'var(--primary)' }} to={`/login${linkedSuffix}`}>Back to login</Link>
         </div>
       </div>
     </div>
