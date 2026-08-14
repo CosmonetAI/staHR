@@ -192,6 +192,22 @@ body{margin:0;font-family:Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe
   color: #047857;
 }
 
+.oauth-consent-scopes {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid #dce7e3;
+  border-radius: 10px;
+  background: #fbfdfc;
+}
+
+.oauth-consent-scopes ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: #506762;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .oauth-auth-links {
   display: flex;
   justify-content: center;

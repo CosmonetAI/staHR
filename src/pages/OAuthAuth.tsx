@@ -41,12 +41,12 @@ function buildQuery(params: URLSearchParams, nextMode: Mode) {
   const next = new URLSearchParams()
   const redirect = params.get('redirect') || ''
   const email = params.get('email') || ''
+  const name = params.get('name') || ''
   const app = params.get('app') || ''
-  const organization = params.get('organization') || ''
   if (redirect) next.set('redirect', redirect)
   if (email) next.set('email', email)
+  if (name) next.set('name', name)
   if (app) next.set('app', app)
-  if (organization) next.set('organization', organization)
   const query = next.toString()
   return `/oauth/${nextMode}${query ? `?${query}` : ''}`
 }
@@ -58,8 +58,8 @@ export default function OAuthAuth({ mode }: { mode: Mode }) {
   const appKey = params.get('app') || 'default'
   const app = APP_COPY[appKey] || APP_COPY.default
   const [email, setEmail] = useState(params.get('email') || '')
+  const [fullName, setFullName] = useState(params.get('name') || '')
   const [password, setPassword] = useState('')
-  const [fullName, setFullName] = useState(params.get('organization') || '')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -124,7 +124,7 @@ export default function OAuthAuth({ mode }: { mode: Mode }) {
         return
       }
 
-      if (!fullName.trim()) throw new Error('Enter your brand or workspace name.')
+      if (mode === 'signup' && fullName.trim().length < 2) throw new Error('Enter your name.')
       if (isTrustedOAuthContinue(redirect)) {
         try { localStorage.setItem(OAUTH_CONTINUE_STORAGE_KEY, redirect) } catch (e) {}
       }
@@ -133,8 +133,7 @@ export default function OAuthAuth({ mode }: { mode: Mode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: normalizedEmail,
-          full_name: fullName.trim(),
-          organization_name: fullName.trim(),
+          full_name: fullName.trim() || normalizedEmail,
           app: appKey,
           redirect
         })
@@ -162,8 +161,8 @@ export default function OAuthAuth({ mode }: { mode: Mode }) {
         <form className="oauth-auth-form" onSubmit={onSubmit}>
           {mode === 'signup' ? (
             <label>
-              Brand or workspace name
-              <input value={fullName} onChange={(event) => setFullName(event.target.value)} autoComplete="organization" placeholder="Your brand" />
+              Name
+              <input value={fullName} onChange={(event) => setFullName(event.target.value)} autoComplete="name" placeholder="Your name" />
             </label>
           ) : null}
           <label>

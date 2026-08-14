@@ -131,7 +131,6 @@ async function sendInviteSignup(req, res) {
 
   const email = String(body.email || "").trim().toLowerCase();
   const fullName = String(body.full_name || body.fullName || "").trim();
-  const organizationName = String(body.organization_name || body.organizationName || fullName).trim();
   const app = String(body.app || "default").trim() || "default";
   const redirect = String(body.redirect || "").trim();
 
@@ -158,7 +157,6 @@ async function sendInviteSignup(req, res) {
     data: {
       full_name: fullName,
       display_name: fullName || email,
-      organization_name: organizationName || fullName || email,
       source: "oauth_signup",
       app,
       redirect,
