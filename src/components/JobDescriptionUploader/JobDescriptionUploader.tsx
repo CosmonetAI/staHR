@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react'
 import parseJobDescriptionFile from '../../api/parseJobDescription'
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 import { ParsedJobDescription } from '../../types/job'
 
 type Props = {
@@ -33,11 +34,45 @@ export default function JobDescriptionUploader({ onParsed }: Props) {
     setLoading(true)
     setProgress(10)
     try {
-      const res = await parseJobDescriptionFile(f, (p) => setProgress(p))
-      if (!res.success) {
-        setError(res.error || 'Failed to parse file')
+      // If PDF, extract text client-side and send as text to the edge function
+      if (f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')) {
+        try {
+          try {
+            GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.js', import.meta.url).toString()
+          } catch (e) {
+            // ignore worker setup errors
+          }
+
+          const arrayBuffer = await f.arrayBuffer()
+          const pdf = await getDocument({ data: arrayBuffer }).promise
+          let fullText = ''
+          for (let i = 1; i <= pdf.numPages; i++) {
+            try {
+              const page = await pdf.getPage(i)
+              const content = await page.getTextContent()
+              const pageText = content.items.map((it: any) => String(it.str)).join(' ')
+              fullText += (fullText ? '\n\n' : '') + pageText
+            } catch (e) {
+              // continue on page-level errors
+            }
+          }
+
+          const res = await parseJobDescriptionFile(fullText, (p) => setProgress(p))
+          if (!res.success) {
+            setError(res.error || 'Failed to parse file')
+          } else {
+            onParsed(res.data as ParsedJobDescription)
+          }
+        } catch (err: any) {
+          setError(err?.message || String(err) || 'Failed to extract text from PDF')
+        }
       } else {
-        onParsed(res.data as ParsedJobDescription)
+        const res = await parseJobDescriptionFile(f, (p) => setProgress(p))
+        if (!res.success) {
+          setError(res.error || 'Failed to parse file')
+        } else {
+          onParsed(res.data as ParsedJobDescription)
+        }
       }
     } catch (e: any) {
       setError(e?.message || String(e))
