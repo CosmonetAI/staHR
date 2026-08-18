@@ -1,114 +1,495 @@
-import { serve } from 'https://deno.land/std@0.203.0/http/server.ts'
-import { createClient } from 'npm:@supabase/supabase-js'
-import pdfParse from 'npm:pdf-parse'
-import mammoth from 'npm:mammoth'
 
-const SUPABASE_URL = Deno.env.get('PROJECT_SUPABASE_URL') || Deno.env.get('SUPABASE_URL') || Deno.env.get('VITE_SUPABASE_URL')
-const SUPABASE_ANON_KEY = Deno.env.get('PROJECT_SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('VITE_SUPABASE_ANON_KEY')
-const SUPABASE_SERVICE_ROLE = Deno.env.get('PROJECT_SUPABASE_SERVICE_ROLE') || Deno.env.get('SUPABASE_SERVICE_ROLE') || Deno.env.get('VITE_SUPABASE_SERVICE_ROLE')
+import { createClient } from "npm:@supabase/supabase-js@2";
 
-let sb: any = null
-let sbAdmin: any = null
-if (SUPABASE_URL && SUPABASE_ANON_KEY) {
-  sb = createClient(String(SUPABASE_URL), String(SUPABASE_ANON_KEY))
-} else {
-  console.error('Missing SUPABASE_URL or SUPABASE_ANON_KEY environment variables')
-}
-if (SUPABASE_URL && SUPABASE_SERVICE_ROLE) {
-  try {
-    sbAdmin = createClient(String(SUPABASE_URL), String(SUPABASE_SERVICE_ROLE))
-  } catch (e) {
-    console.warn('Failed to create admin Supabase client', e)
-    sbAdmin = null
-  }
-}
+const SUPABASE_URL =
+  Deno.env.get("PROJECT_SUPABASE_URL") ||
+  Deno.env.get("SUPABASE_URL") ||
+  Deno.env.get("VITE_SUPABASE_URL");
 
-const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') || Deno.env.get('OPENAI_KEY')
-const OPENAI_MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-4.1'
+const SUPABASE_ANON_KEY =
+  Deno.env.get("PROJECT_SUPABASE_ANON_KEY") ||
+  Deno.env.get("SUPABASE_ANON_KEY") ||
+  Deno.env.get("VITE_SUPABASE_ANON_KEY");
+
+const SUPABASE_SERVICE_ROLE =
+  Deno.env.get("PROJECT_SUPABASE_SERVICE_ROLE") ||
+  Deno.env.get("SUPABASE_SERVICE_ROLE") ||
+  Deno.env.get("VITE_SUPABASE_SERVICE_ROLE");
+
+const OPENAI_API_KEY =
+  Deno.env.get("OPENAI_API_KEY") ||
+  Deno.env.get("OPENAI_KEY");
+
+const OPENAI_MODEL =
+  Deno.env.get("OPENAI_MODEL") || "gpt-4.1";
 
 const corsHeaders = (origin: string) => ({
-  'Access-Control-Allow-Origin': origin || '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey, x-api-key, x-apikey',
-  'Access-Control-Allow-Credentials': 'true'
-})
+  "Access-Control-Allow-Origin": origin || "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers":
+    "Content-Type, Authorization, apikey, x-api-key, x-apikey",
+  "Access-Control-Allow-Credentials": "true",
+  "Content-Type": "application/json",
+});
 
-function extractExt(name: string) {
-  const m = String(name || '').toLowerCase().match(/\.([a-z0-9]+)$/)
-  return m ? m[1] : ''
+let sb: any = null;
+let sbAdmin: any = null;
+
+if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+  sb = createClient(
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY
+  );
 }
 
-serve(async (req) => {
-  const origin = req.headers.get('origin') || '*'
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders(origin) })
+if (SUPABASE_URL && SUPABASE_SERVICE_ROLE) {
+  try {
+    sbAdmin = createClient(
+      SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE
+    );
+  } catch (error) {
+    console.warn(
+      "Failed to create admin Supabase client:",
+      error
+    );
+  }
+}
+
+function jsonResponse(
+  data: unknown,
+  status: number,
+  origin: string
+) {
+  return new Response(
+    JSON.stringify(data),
+    {
+      status,
+      headers: corsHeaders(origin),
+    }
+  );
+}
+
+function ensureArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item).trim())
+      .filter(Boolean);
   }
 
-  if (!sb) return new Response(JSON.stringify({ error: 'Server misconfiguration: missing SUPABASE_URL or SUPABASE_ANON_KEY' }), { status: 500, headers: corsHeaders(origin) })
+  if (value === null || value === undefined) {
+    return [];
+  }
+
+  return String(value)
+    .split(/[\n,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function ensureNumber(
+  value: unknown,
+  defaultValue = 0
+): number {
+  if (
+    typeof value === "number" &&
+    Number.isFinite(value)
+  ) {
+    return Math.round(value);
+  }
+
+  if (
+    typeof value === "string" &&
+    value.trim() !== ""
+  ) {
+    const parsed = Number(
+      value.replace(/[^\d.-]/g, "")
+    );
+
+    if (Number.isFinite(parsed)) {
+      return Math.round(parsed);
+    }
+  }
+
+  return defaultValue;
+}
+
+function extractJson(content: string): any | null {
+  if (!content) {
+    return null;
+  }
+
+  // Remove markdown code fences if the model returned them.
+  let cleaned = content
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
+
+  // First attempt: direct JSON parsing.
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    // Continue with extraction.
+  }
+
+  // Find the first JSON object.
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+
+  if (
+    firstBrace !== -1 &&
+    lastBrace !== -1 &&
+    lastBrace > firstBrace
+  ) {
+    const jsonString = cleaned.slice(
+      firstBrace,
+      lastBrace + 1
+    );
+
+    try {
+      return JSON.parse(jsonString);
+    } catch (error) {
+      console.error(
+        "Unable to parse extracted JSON:",
+        error
+      );
+    }
+  }
+
+  return null;
+}
+
+function normalizeJobData(parsed: any) {
+  const experience =
+    parsed?.experience || {};
+
+  const budget =
+    parsed?.budget || {};
+
+  const numberOfPositions =
+    ensureNumber(
+      parsed?.numberOfPositions ??
+        parsed?.number_of_positions,
+      1
+    );
+
+  return {
+    jobTitle:
+      parsed?.jobTitle ||
+      parsed?.title ||
+      "",
+
+    department:
+      parsed?.department || "",
+
+    experience: {
+      minimum: ensureNumber(
+        experience?.minimum ??
+          experience?.min,
+        0
+      ),
+
+      maximum: ensureNumber(
+        experience?.maximum ??
+          experience?.max,
+        0
+      ),
+    },
+
+    employmentType:
+      parsed?.employmentType ||
+      parsed?.employment_type ||
+      parsed?.employment ||
+      "",
+
+    workMode:
+      parsed?.workMode ||
+      parsed?.work_mode ||
+      "",
+
+    location:
+      parsed?.location || "",
+
+    numberOfPositions:
+      Math.max(1, numberOfPositions),
+
+    budget: {
+      minimum:
+        budget?.minimum ??
+        budget?.min ??
+        "",
+
+      maximum:
+        budget?.maximum ??
+        budget?.max ??
+        "",
+
+      currency:
+        budget?.currency ||
+        "INR",
+    },
+
+    noticePeriod:
+      parsed?.noticePeriod ||
+      parsed?.notice_period ||
+      "",
+
+    primarySkills: ensureArray(
+      parsed?.primarySkills ||
+        parsed?.primary_skills ||
+        parsed?.primary ||
+        parsed?.skills
+    ),
+
+    secondarySkills: ensureArray(
+      parsed?.secondarySkills ||
+        parsed?.secondary_skills
+    ),
+
+    responsibilities: ensureArray(
+      parsed?.responsibilities
+    ),
+
+    qualifications: ensureArray(
+      parsed?.qualifications
+    ),
+
+    preferredSkills: ensureArray(
+      parsed?.preferredSkills ||
+        parsed?.preferred_skills
+    ),
+
+    tools: ensureArray(
+      parsed?.tools
+    ),
+
+    certifications: ensureArray(
+      parsed?.certifications
+    ),
+
+    education:
+      parsed?.education || "",
+
+    industry:
+      parsed?.industry || "",
+
+    summary:
+      parsed?.summary || "",
+
+    jobDescription:
+      parsed?.jobDescription ||
+      parsed?.job_description ||
+      "",
+  };
+}
+
+async function parseRequestBody(req: Request) {
+  const contentType =
+    req.headers.get("content-type") || "";
+
+  /*
+   * Preferred format:
+   *
+   * {
+   *   "text": "job description..."
+   * }
+   */
+
+  if (
+    contentType.includes("application/json")
+  ) {
+    const body = await req.json();
+
+    return {
+      text:
+        typeof body?.text === "string"
+          ? body.text
+          : "",
+    };
+  }
+
+  /*
+   * Also support multipart/form-data
+   * if the frontend already sends FormData.
+   *
+   * IMPORTANT:
+   * This function no longer parses PDF/DOCX itself.
+   * The file must contain plain text or the
+   * frontend must send a "text" field.
+   */
+
+  if (
+    contentType.includes("multipart/form-data")
+  ) {
+    const form = await req.formData();
+
+    const textField =
+      form.get("text");
+
+    if (
+      typeof textField === "string"
+    ) {
+      return {
+        text: textField,
+      };
+    }
+
+    const file =
+      form.get("file");
+
+    if (file instanceof File) {
+      const fileType =
+        file.type || "";
+
+      /*
+       * Plain text files can still be processed
+       * directly without any dependency.
+       */
+      if (
+        fileType === "text/plain" ||
+        file.name
+          .toLowerCase()
+          .endsWith(".txt")
+      ) {
+        return {
+          text: await file.text(),
+        };
+      }
+
+      throw new Error(
+        "PDF/DOCX files must be converted to text before calling this function."
+      );
+    }
+  }
+
+  return {
+    text: "",
+  };
+}
+
+Deno.serve(async (req: Request) => {
+  const origin =
+    req.headers.get("origin") || "*";
+
+  // CORS
+  if (req.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders(origin),
+    });
+  }
+
+  // Only POST is supported.
+  if (req.method !== "POST") {
+    return jsonResponse(
+      {
+        error:
+          "Method not allowed. Use POST.",
+      },
+      405,
+      origin
+    );
+  }
 
   try {
-    // Expect multipart form with file field 'file'
-    if (req.method !== 'POST') return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405, headers: corsHeaders(origin) })
+    // -----------------------------------------
+    // Configuration validation
+    // -----------------------------------------
 
-    const contentType = req.headers.get('content-type') || ''
-    if (!contentType.includes('form-data') && !contentType.includes('multipart')) {
-      return new Response(JSON.stringify({ error: 'Expected multipart/form-data' }), { status: 400, headers: corsHeaders(origin) })
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      return jsonResponse(
+        {
+          error:
+            "Server misconfiguration: Supabase URL or anonymous key is missing.",
+        },
+        500,
+        origin
+      );
     }
 
-    const form = await req.formData()
-    const file = form.get('file') as any
-    if (!file) return new Response(JSON.stringify({ error: 'Missing file field' }), { status: 400, headers: corsHeaders(origin) })
-
-    const filename = file.name || 'upload'
-    const ext = extractExt(filename)
-    const buf = await file.arrayBuffer()
-    let text = ''
-
-    if (ext === 'pdf') {
-      try {
-        const data = await pdfParse(Buffer.from(buf))
-        text = data.text || ''
-      } catch (e) {
-        console.error('pdf parse error', e)
-        return new Response(JSON.stringify({ error: 'Failed to parse PDF' }), { status: 500, headers: corsHeaders(origin) })
-      }
-    } else if (ext === 'docx') {
-      try {
-        const r = await mammoth.extractRawText({ buffer: buf })
-        text = r?.value || ''
-      } catch (e) {
-        console.error('docx parse error', e)
-        return new Response(JSON.stringify({ error: 'Failed to parse DOCX' }), { status: 500, headers: corsHeaders(origin) })
-      }
-    } else if (ext === 'txt') {
-      try {
-        text = new TextDecoder().decode(buf)
-      } catch (e) {
-        console.error('txt decode error', e)
-        return new Response(JSON.stringify({ error: 'Failed to read text file' }), { status: 500, headers: corsHeaders(origin) })
-      }
-    } else if (ext === 'doc') {
-      return new Response(JSON.stringify({ error: 'Legacy .doc files are not supported. Please save as .docx or PDF' }), { status: 400, headers: corsHeaders(origin) })
-    } else {
-      return new Response(JSON.stringify({ error: 'Unsupported file type' }), { status: 400, headers: corsHeaders(origin) })
+    if (!OPENAI_API_KEY) {
+      return jsonResponse(
+        {
+          error:
+            "OpenAI API key is not configured.",
+        },
+        500,
+        origin
+      );
     }
 
-    // Trim and sanity check
-    text = String(text || '').trim()
-    if (!text) return new Response(JSON.stringify({ error: 'Extracted text is empty' }), { status: 400, headers: corsHeaders(origin) })
+    // -----------------------------------------
+    // Read request
+    // -----------------------------------------
 
-    if (!OPENAI_API_KEY) return new Response(JSON.stringify({ error: 'OpenAI API key not configured' }), { status: 500, headers: corsHeaders(origin) })
+    const { text } =
+      await parseRequestBody(req);
 
-    const systemPrompt = `You are a JSON generator. Given a job description text, extract the requested fields and output STRICT JSON only, with keys exactly as specified. Do not output any additional text, commentary, or markdown. The JSON schema is:
+    const jobDescriptionText =
+      String(text || "").trim();
+
+    if (!jobDescriptionText) {
+      return jsonResponse(
+        {
+          error:
+            "Job description text is required.",
+          message:
+            "Send { text: '...' } in the request body.",
+        },
+        400,
+        origin
+      );
+    }
+
+    // Prevent unnecessarily huge OpenAI requests.
+    const MAX_TEXT_LENGTH = 50000;
+
+    const trimmedText =
+      jobDescriptionText.length >
+      MAX_TEXT_LENGTH
+        ? jobDescriptionText.slice(
+            0,
+            MAX_TEXT_LENGTH
+          )
+        : jobDescriptionText;
+
+    // -----------------------------------------
+    // OpenAI prompt
+    // -----------------------------------------
+
+    const systemPrompt = `
+You are an expert HR recruitment assistant.
+
+Your task is to analyze a job description and
+extract structured recruitment information.
+
+Return STRICT JSON ONLY.
+
+Do not return:
+- Markdown
+- Code fences
+- Explanations
+- Comments
+- Additional text
+
+Use exactly this JSON structure:
+
 {
   "jobTitle": "",
   "department": "",
-  "experience": { "minimum": 0, "maximum": 0 },
+  "experience": {
+    "minimum": 0,
+    "maximum": 0
+  },
   "employmentType": "",
   "workMode": "",
   "location": "",
   "numberOfPositions": 1,
-  "budget": { "minimum": "", "maximum": "", "currency": "INR" },
+  "budget": {
+    "minimum": "",
+    "maximum": "",
+    "currency": "INR"
+  },
   "noticePeriod": "",
   "primarySkills": [],
   "secondarySkills": [],
@@ -124,95 +505,206 @@ serve(async (req) => {
 }
 
 Rules:
-- Return valid JSON only. If a field is not present, use empty string, empty array, or reasonable default as in the schema.
-- Experience numbers should be integers (years) when extractable, otherwise 0 or null.
-- numberOfPositions should be an integer >=1.
-`
 
-    const userPrompt = `Extract structured data from the following job description. Return STRICT JSON only (no commentary):\n\n${text}`
+1. Extract only information that is supported
+   by the job description.
 
-    const body = {
-      model: OPENAI_MODEL,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0
-    }
+2. If a value is not available, return:
+   - "" for text
+   - [] for arrays
+   - 0 for numeric values
 
-    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`
-      },
-      body: JSON.stringify(body)
-    })
+3. Experience must contain integer years.
 
-    if (!openaiRes.ok) {
-      const t = await openaiRes.text().catch(() => '')
-      console.error('OpenAI error', openaiRes.status, t)
-      return new Response(JSON.stringify({ error: 'OpenAI API error' }), { status: 500, headers: corsHeaders(origin) })
-    }
+4. numberOfPositions must be an integer
+   greater than or equal to 1.
 
-    const openaiJson = await openaiRes.json()
-    const content = openaiJson?.choices?.[0]?.message?.content || openaiJson?.choices?.[0]?.text || ''
+5. primarySkills should contain the most
+   important technical or professional skills
+   required for the role.
 
-    // Try to parse the returned JSON. Allow for some wrappers by finding first/last braces
-    let parsed: any = null
-    try {
-      parsed = JSON.parse(content)
-    } catch (e) {
-      // attempt to extract JSON substring
-      const first = content.indexOf('{')
-      const last = content.lastIndexOf('}')
-      if (first !== -1 && last !== -1 && last > first) {
-        try {
-          parsed = JSON.parse(content.slice(first, last + 1))
-        } catch (e2) {
-          console.error('Failed to parse JSON from model output', e2)
+6. secondarySkills should contain additional
+   useful skills.
+
+7. responsibilities should contain individual
+   responsibilities as separate array items.
+
+8. qualifications should contain individual
+   qualifications as separate array items.
+
+9. preferredSkills should contain skills marked
+   as preferred, optional, or desirable.
+
+10. tools should contain software, platforms,
+    frameworks, or technologies.
+
+11. certifications should contain certifications
+    explicitly mentioned.
+
+12. Keep the original meaning of the job
+    description.
+
+13. Do not invent salary, experience, location,
+    skills, or other information.
+
+14. Currency should default to INR if salary
+    information is expressed in Indian Rupees.
+
+15. Return valid JSON only.
+`;
+
+    const userPrompt = `
+Extract structured recruitment information from
+the following job description.
+
+JOB DESCRIPTION:
+
+${trimmedText}
+`;
+
+    // -----------------------------------------
+    // OpenAI API
+    // -----------------------------------------
+
+    const openaiResponse =
+      await fetch(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+
+            Authorization:
+              `Bearer ${OPENAI_API_KEY}`,
+          },
+
+          body: JSON.stringify({
+            model: OPENAI_MODEL,
+
+            temperature: 0,
+
+            messages: [
+              {
+                role: "system",
+                content: systemPrompt,
+              },
+
+              {
+                role: "user",
+                content: userPrompt,
+              },
+            ],
+          }),
         }
-      }
+      );
+
+    // -----------------------------------------
+    // OpenAI error handling
+    // -----------------------------------------
+
+    if (!openaiResponse.ok) {
+      const errorText =
+        await openaiResponse.text()
+          .catch(() => "");
+
+      console.error(
+        "OpenAI API error:",
+        openaiResponse.status,
+        errorText
+      );
+
+      return jsonResponse(
+        {
+          error:
+            "OpenAI API request failed.",
+          status:
+            openaiResponse.status,
+        },
+        500,
+        origin
+      );
     }
+
+    // -----------------------------------------
+    // Read OpenAI response
+    // -----------------------------------------
+
+    const openaiJson =
+      await openaiResponse.json();
+
+    const content =
+      openaiJson?.choices?.[0]
+        ?.message?.content || "";
+
+    if (!content) {
+      return jsonResponse(
+        {
+          error:
+            "OpenAI returned an empty response.",
+        },
+        500,
+        origin
+      );
+    }
+
+    // -----------------------------------------
+    // Parse JSON
+    // -----------------------------------------
+
+    const parsed =
+      extractJson(content);
 
     if (!parsed) {
-      console.error('Model returned non-JSON', content)
-      return new Response(JSON.stringify({ error: 'Model did not return valid JSON' }), { status: 500, headers: corsHeaders(origin) })
+      console.error(
+        "Invalid JSON returned by OpenAI:",
+        content
+      );
+
+      return jsonResponse(
+        {
+          error:
+            "OpenAI did not return valid JSON.",
+        },
+        500,
+        origin
+      );
     }
 
-    // Ensure minimal shape and defaults
-    const ensureArray = (v: any) => Array.isArray(v) ? v : (v ? String(v).split(/[\n,]+/).map((s: string) => s.trim()).filter(Boolean) : [])
-    const out = {
-      jobTitle: parsed.jobTitle || parsed.title || '',
-      department: parsed.department || '',
-      experience: {
-        minimum: typeof parsed.experience?.minimum === 'number' ? parsed.experience.minimum : (parsed.experience?.min || 0),
-        maximum: typeof parsed.experience?.maximum === 'number' ? parsed.experience.maximum : (parsed.experience?.max || 0)
+    // -----------------------------------------
+    // Normalize result
+    // -----------------------------------------
+
+    const result =
+      normalizeJobData(parsed);
+
+    // -----------------------------------------
+    // Return final response
+    // -----------------------------------------
+
+    return jsonResponse(
+      result,
+      200,
+      origin
+    );
+
+  } catch (error) {
+    console.error(
+      "parse-job-description error:",
+      error
+    );
+
+    return jsonResponse(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Internal server error.",
       },
-      employmentType: parsed.employmentType || parsed.employment_type || parsed.employment || '',
-      workMode: parsed.workMode || parsed.work_mode || '',
-      location: parsed.location || '',
-      numberOfPositions: typeof parsed.numberOfPositions === 'number' ? parsed.numberOfPositions : (parsed.number_of_positions ? Number(parsed.number_of_positions) : 1),
-      budget: parsed.budget || { minimum: '', maximum: '', currency: 'INR' },
-      noticePeriod: parsed.noticePeriod || '',
-      primarySkills: ensureArray(parsed.primarySkills || parsed.primary_skills || parsed.primary || parsed.skills),
-      secondarySkills: ensureArray(parsed.secondarySkills || parsed.secondary_skills || []),
-      responsibilities: ensureArray(parsed.responsibilities || []),
-      qualifications: ensureArray(parsed.qualifications || []),
-      preferredSkills: ensureArray(parsed.preferredSkills || parsed.preferred_skills || []),
-      tools: ensureArray(parsed.tools || []),
-      certifications: ensureArray(parsed.certifications || []),
-      education: parsed.education || '',
-      industry: parsed.industry || '',
-      summary: parsed.summary || '',
-      jobDescription: parsed.jobDescription || parsed.job_description || ''
-    }
-
-    return new Response(JSON.stringify(out), { status: 200, headers: corsHeaders(origin) })
-
-  } catch (err) {
-    console.error('parse-job-description error', err)
-    const origin = req.headers.get('origin') || '*'
-    return new Response(JSON.stringify({ error: 'Internal error' }), { status: 500, headers: corsHeaders(origin) })
+      500,
+      origin
+    );
   }
-})
+});
+
