@@ -248,6 +248,23 @@ function normalizeRow(raw: Record<string, any>) {
   return normalized
 }
 
+function getMissingOrInvalidFields(normalized: Record<string, any>) {
+  const issues: string[] = []
+  const name = blankToUndefined(normalized.name)
+  if (!name) issues.push('Candidate name is missing')
+
+  const emailRaw = blankToUndefined(normalized.email)
+  if (!emailRaw) {
+    issues.push('Email is missing')
+  } else {
+    const emailCheck = z.string().email()
+    const ok = emailCheck.safeParse(emailRaw)
+    if (!ok.success) issues.push('Email is invalid')
+  }
+
+  return issues
+}
+
 function buildCandidate(normalized: Record<string, any>, fileName: string, sheetName: string): Candidate & Record<string, any> {
   try {
     const parsed = candidateSchema.parse(normalized)
@@ -345,9 +362,14 @@ async function parseExcelFile(file: File): Promise<ParseResult> {
     workbook.SheetNames.forEach((sheetName) => {
       const sheetRows = rowsFromSheet(workbook.Sheets[sheetName])
       sheetRows.forEach((raw, index) => {
-        const candidate = buildCandidate(normalizeRow(raw), file.name, sheetName)
-        if (candidate.name && candidate.email) rows.push(candidate)
-        else errors.push(`${sheetName} row ${index + 2}: Candidate name and email are required`)
+        const normalized = normalizeRow(raw)
+        const issues = getMissingOrInvalidFields(normalized)
+        if (issues.length === 0) {
+          const candidate = buildCandidate(normalized, file.name, sheetName)
+          rows.push(candidate)
+        } else {
+          errors.push(`${sheetName} row ${index + 2}: ${issues.join('; ')}`)
+        }
       })
     })
 
@@ -370,10 +392,13 @@ function parsePapaCSVFile(file: File): Promise<ParseResult> {
 
         for (let i = 0; i < rawRows.length; i++) {
           const normalized = normalizeRow(rawRows[i])
-          const candidate = buildCandidate(normalized, file.name, file.name)
-
-          if (candidate.name && candidate.email) rows.push(candidate)
-          else errors.push(`Row ${i + 2}: Candidate name and email are required`)
+          const issues = getMissingOrInvalidFields(normalized)
+          if (issues.length === 0) {
+            const candidate = buildCandidate(normalized, file.name, file.name)
+            rows.push(candidate)
+          } else {
+            errors.push(`Row ${i + 2}: ${issues.join('; ')}`)
+          }
         }
 
         resolve({ rows, errors })

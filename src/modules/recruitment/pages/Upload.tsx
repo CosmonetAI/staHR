@@ -51,7 +51,7 @@ export default function Upload() {
     setPreview([{ sheet: file.name, rows: coerced, errors }])
     const total = (rows || []).length
     if (!total) {
-      addToast('No rows parsed from the file', 'error')
+      // No rows parsed; do not display toasts here. Keep preview so user can inspect file.
       return
     }
     try { console.debug('Upload.handleFile: parsed', { file: file.name, total }) } catch (e) {}
@@ -109,10 +109,7 @@ export default function Upload() {
               <div className="import-kpi-value">{countUnique(rowsFlat, 'location')}</div>
               <div className="import-kpi-label">Locations</div>
             </div>
-            <div className={`import-kpi-card ${totalErrors ? 'has-errors' : ''}`}>
-              <div className="import-kpi-value">{totalErrors}</div>
-              <div className="import-kpi-label">Import warnings</div>
-            </div>
+            
           </div>
 
           {totalErrors > 0 && (
