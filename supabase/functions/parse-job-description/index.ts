@@ -425,16 +425,16 @@ Deno.serve(async (req: Request) => {
     const { text } =
       await parseRequestBody(req);
 
-    const jobDescriptionText =
-      String(text || "").trim();
+    const jobDescriptionText = String(text || "").trim();
+
+    console.debug('parse-job-description: received text length=', jobDescriptionText.length)
 
     if (!jobDescriptionText) {
       return jsonResponse(
         {
-          error:
-            "Job description text is required.",
+          error: "PDF_TEXT_EMPTY",
           message:
-            "Send { text: '...' } in the request body.",
+            "No readable job description text found. Send { text: '...' } in the request body. If you uploaded a PDF/DOCX file, convert it to plain text on the client before calling this function or enable OCR fallback on the client.",
         },
         400,
         origin

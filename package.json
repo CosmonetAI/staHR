@@ -26,6 +26,7 @@
     "react-router-dom": "^6.18.0",
     "xlsx": "^0.18.5",
     "pdfjs-dist": "^3.6.172",
+    "tesseract.js": "^2.1.5",
     "zod": "^3.23.2"
   },
   "devDependencies": {
