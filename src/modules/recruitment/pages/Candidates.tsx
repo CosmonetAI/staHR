@@ -625,7 +625,8 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
           <FileUpload onFile={async (file: File) => {
             try {
               const { rows: rowsFlat, errors } = await parseCSVFile(file)
-              if (!rowsFlat.length) { addToast('No rows parsed', 'error'); return }
+              setImportErrors(errors || [])
+              if (!rowsFlat.length) { setImportErrors(errors && errors.length ? errors : ['No rows parsed from file']); return }
               // Resolve role/job title from provided job id (if available)
               const mapped = rowsFlat.map(r => {
                 try {
@@ -660,7 +661,9 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
                 }))
                 // prepend imported rows so newest appear on top
                 setRows(prev => [...newRows, ...prev])
-                if (errors && errors.length) console.debug('CSV parse errors', errors)
+                if (errors && errors.length) {
+                  console.debug('CSV parse errors', errors)
+                }
                 addToast(`Imported ${newRows.length} candidates`, 'success')
               } catch (err) {
                 addToast('Import failed', 'error')
@@ -670,6 +673,14 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
               addToast('Import failed', 'error')
             }
           }} />
+          {importErrors && importErrors.length > 0 && (
+            <div style={{ marginTop: 12, padding: 12, borderTop: '1px solid #eee', background: '#fff7f7' }}>
+              <strong>Upload warnings</strong>
+              <ul style={{ marginTop: 8, paddingLeft: 18, maxHeight: 180, overflow: 'auto' }}>
+                {importErrors.map((e: string, i: number) => <li key={i} style={{ color: '#7a2626', marginBottom: 6 }}>{e}</li>)}
+              </ul>
+            </div>
+          )}
         </div>
       </div>
 
