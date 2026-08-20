@@ -401,6 +401,12 @@ tbody tr:hover{background:var(--row-hover);cursor:pointer}
     margin-bottom:12px;   /* keeps space below */
 
     background:#fff;
+  /* Import progress animation used by import progress bar */
+  @keyframes importProgress {
+    0% { transform: translateX(-10%); }
+    50% { transform: translateX(40%); }
+    100% { transform: translateX(110%); }
+  }
 }
 .pagination-container button{
     min-width:28px;

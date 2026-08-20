@@ -82,6 +82,7 @@ export default function Candidates() {
   const [form, setForm] = useState<any>({})
   const [importPreview, setImportPreview] = useState<any[]>([])
   const [importErrors, setImportErrors] = useState<any[]>([])
+  const [isImporting, setIsImporting] = useState(false)
   const [openFilter, setOpenFilter] = useState<string | null>(null)
   const [sampleMenuOpen, setSampleMenuOpen] = useState(false)
   const [jobsMap, setJobsMap] = useState<Record<string, any>>({})
@@ -630,7 +631,12 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
           </div>
           <button className="drawer-close" onClick={() => setShowUpload(false)}>✕</button>
         </div>
-        <div className="drawer-body">
+          <div className="drawer-body">
+            {isImporting && (
+              <div style={{ height: 6, width: '100%', background: '#eee', marginBottom: 12 }}>
+                <div style={{ height: 6, width: '30%', background: 'var(--primary)', animation: 'importProgress 1.2s linear infinite' }} />
+              </div>
+            )}
           <FileUpload onFile={async (file: File) => {
             try {
               const { rows: rowsFlat, errors } = await parseCSVFile(file)
@@ -651,6 +657,7 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
                 return r
               })
               try {
+                setIsImporting(true)
                 const inserted = await CandidateService.createMany(mapped)
                 const newRows = inserted.map((p: any) => ({
                   id: p.id,
@@ -682,6 +689,7 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
               } catch (err) {
                 addToast('Import failed', 'error')
               }
+              setIsImporting(false)
               setShowUpload(false)
             } catch (e) {
               addToast('Import failed', 'error')
@@ -1191,6 +1199,7 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
           importParsedRows={async () => {
             if (!importPreview.length) return
             try {
+              setIsImporting(true)
               const inserted = await CandidateService.createMany(importPreview)
               const newRows = inserted.map((p: any) => ({ id: p.id, name: p.name, email: p.email, phone: p.phone, exp: p.experience ? String(p.experience) : '', cctc: p.current_ctc ? String(p.current_ctc) : '', ectc: p.expected_ctc ? String(p.expected_ctc) : '', location: p.current_location || '', np: p.notice_period || '', selstatus: p.selstatus || 'progress', role: p.job_role || p.role || '', linkedin: p.linkedin || '', client_feedback: p.client_feedback || '', created_at: p.created_at, updated_at: p.updated_at }))
               setRows(prev => [...newRows, ...prev])
@@ -1202,6 +1211,7 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
               setImportPreview([])
               setImportErrors([])
               setDrawerOpen(false)
+              setIsImporting(false)
             } catch (e) { addToast('Import failed', 'error') }
           }}
           onClearImport={() => { setImportPreview([]); setImportErrors([]) }}

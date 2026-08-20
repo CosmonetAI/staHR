@@ -215,6 +215,7 @@ export default function RecruitmentDashboard() {
   const [importPreview, setImportPreview] = useState<Record<string, any>[]>([])
   const [importErrors, setImportErrors] = useState<Record<string, any>[]>([])
   const [showAllSkills, setShowAllSkills] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
 
   const [filters, setFilters] = useState<DashboardFilters>({
     dateFrom: '',
@@ -680,6 +681,7 @@ export default function RecruitmentDashboard() {
     if (!importPreview.length) return
     ;(async () => {
       try {
+        setIsImporting(true)
         const inserted = await CandidateService.createMany(importPreview as any)
         setRows((prev) => [...inserted, ...prev])
         const meta = (inserted as any).__importMeta || { inserted: inserted.length, updated: 0 }
@@ -690,7 +692,9 @@ export default function RecruitmentDashboard() {
         setImportPreview([])
         setImportErrors([])
         setDrawerOpen(false)
+        setIsImporting(false)
       } catch (e) {
+        setIsImporting(false)
         addToast('Import failed', 'error')
       }
     })()
