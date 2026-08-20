@@ -772,11 +772,14 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
                             </div>
                             {(() => {
                               const roleName = String(c.role || c.job_role || c.applied_job_title || '').trim()
-                              const missing = roleName && !jobTitlesSet.has(roleName.toLowerCase())
-                              if (missing) {
-                                return <span title={`Referenced job '${roleName}' not found`} style={{ display: 'inline-flex', alignItems: 'center' }}><FaExclamationTriangle style={{ color: '#b91c1c' }} /> </span>
-                              }
-                              return null
+                              const missingRole = roleName && !jobTitlesSet.has(roleName.toLowerCase())
+                              const missingJobId = !String(c.applied_job_id || c.job_id || c.job_ref || '').trim()
+                              return (
+                                <>
+                                  {missingRole && <span title={`Referenced job '${roleName}' not found`} style={{ display: 'inline-flex', alignItems: 'center' }}><FaExclamationTriangle style={{ color: '#b91c1c' }} /> </span>}
+                                  {missingJobId && <span title={`No job id assigned`} style={{ display: 'inline-flex', alignItems: 'center', marginLeft: 6 }}><FaExclamationTriangle style={{ color: '#b45309' }} /> </span>}
+                                </>
+                              )
                             })()}
                           </div>
                         </td>
@@ -848,8 +851,13 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
                                                  {(() => {
                                                    const roleName = String(c.applied_job_title || c.role || '').trim()
                                                    const missing = roleName && !jobTitlesSet.has(roleName.toLowerCase())
-                                                   if (missing) return <div style={{ marginLeft: 12, display: 'inline-flex', alignItems: 'center', color: '#b91c1c' }}><FaExclamationTriangle /> <span style={{ marginLeft: 6 }}>Referenced job not found</span></div>
-                                                   return null
+                                                   const missingJobId = !String(c.applied_job_id || c.job_id || c.job_ref || '').trim()
+                                                   return (
+                                                     <>
+                                                       {missing && <div style={{ marginLeft: 12, display: 'inline-flex', alignItems: 'center', color: '#b91c1c' }}><FaExclamationTriangle /> <span style={{ marginLeft: 6 }}>Referenced job not found</span></div>}
+                                                       {missingJobId && <div style={{ marginLeft: 12, display: 'inline-flex', alignItems: 'center', color: '#b45309' }}><FaExclamationTriangle /> <span style={{ marginLeft: 6 }}>Job id not assigned</span></div>}
+                                                     </>
+                                                   )
                                                  })()}
                                          <div style={{ fontSize: 13 }}>
                                            <strong>Job ID:</strong>
