@@ -95,6 +95,10 @@ export default function JobsPage() {
     return String(value || '').trim().toLowerCase()
   }
 
+  function normalizeJobStatus(value: any) {
+    return String(value || '').trim().toLowerCase()
+  }
+
   function applicationCount(job: any) {
     const role = normalizeRole(job.title)
     const importedCount = candidates.filter((c: any) => normalizeRole(c.role || c.job_role) === role).length
@@ -114,7 +118,7 @@ export default function JobsPage() {
 
   function openNewJob() {
     const today = new Date().toISOString().slice(0, 10)
-    setNewJob({ title: '', location: '', openings: 1, posted: today, status: 'Open', desc: '' })
+    setNewJob({ title: '', location: '', openings: 1, posted: today, status: 'open', desc: '' })
   }
 
   function validateJob(j: any) {
@@ -246,9 +250,9 @@ export default function JobsPage() {
   const filteredJobs = useMemo(() => {
     const q = String(search || '').trim().toLowerCase()
     const tokens = q ? q.split(/\s+/).filter(Boolean) : []
-    return (jobs || []).filter((j: any) => {
+      return (jobs || []).filter((j: any) => {
       if (statusFilter && statusFilter !== 'All') {
-        if ((j.status || 'Open') !== statusFilter) return false
+        if (normalizeJobStatus(j.status) !== String(statusFilter).toLowerCase()) return false
       }
       if (clientFilter) {
         const cid = String(j.client_id || j.client_name || '')
@@ -320,10 +324,10 @@ export default function JobsPage() {
         </div>
 
         <div className="filter-menu">
-          <select className="filter-summary" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <select className="filter-summary" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="All">All Status</option>
-            <option value="Open">Open</option>
-            <option value="Closed">Closed</option>
+            <option value="open">Open</option>
+            <option value="closed">Closed</option>
           </select>
         </div>
 
@@ -367,7 +371,7 @@ export default function JobsPage() {
                   <button className="job-title" onClick={() => openDetails(job)}>{job.title}</button>
                   <div className="job-meta">{job.location} {job.client_id || job.client_name ? '• ' : ''}{clientsMap[String(job.client_id || job.client_name || '')] || job.client_name || ''}{(job.client_id || job.client_name) ? ' • ' : ''}JOB ID: {String(job.job_id || job.job_ref || job.id || '')} • Posted {job.posted}</div>
                 </div>
-                <div className={`badge ${job.status === 'Open' ? 'progress' : 'dropped'}`}>{job.status}</div>
+                <div className={`badge ${normalizeJobStatus(job.status) === 'open' ? 'progress' : 'dropped'}`}>{String(job.status || '').replace(/^./, (c) => c.toUpperCase())}</div>
               </div>
 
               <div className="job-metrics" aria-label={`${job.openings} openings and ${apps} applications`}>
@@ -382,7 +386,7 @@ export default function JobsPage() {
               </div>
 
               <div className="job-actions">
-                {!isClient && job.status !== 'Closed' && (
+                {!isClient && normalizeJobStatus(job.status) !== 'closed' && (
                     <button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); navigate('/candidates?job_ref=' + encodeURIComponent(job.job_id || job.job_ref || job.id) + '&job_title=' + encodeURIComponent(job.title)) }}>Apply</button>
                   )}
                 <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); navigate('/candidates?role=' + encodeURIComponent(job.title)) }}>View candidates</button>
@@ -420,10 +424,10 @@ export default function JobsPage() {
                     <td style={{ padding: '10px 12px' }}>{job.location}</td>
                     <td style={{ padding: '10px 12px' }}>{clientsMap[String(job.client_id || job.client_name || '')] || job.client_name || ''}</td>
                     <td style={{ padding: '10px 12px' }}>{job.posted}</td>
-                    <td style={{ padding: '10px 12px' }}>{job.status}</td>
+                    <td style={{ padding: '10px 12px' }}>{String(job.status || '').replace(/^./, (c) => c.toUpperCase())}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
-                        {!isClient && job.status !== 'Closed' && (
+                        {!isClient && normalizeJobStatus(job.status) !== 'closed' && (
                           <button className="btn btn-ghost" title="Apply" onClick={(e) => { e.stopPropagation(); navigate('/candidates?job_ref=' + encodeURIComponent(job.job_id || job.job_ref || job.id) + '&job_title=' + encodeURIComponent(job.title)) }}><FaPaperPlane /></button>
                         )}
                         <button className="btn btn-primary" title="View candidates" onClick={(e) => { e.stopPropagation(); navigate('/candidates?role=' + encodeURIComponent(job.title)) }}><FaUsers /></button>
@@ -459,9 +463,9 @@ export default function JobsPage() {
                   <span>Client: {clientsMap[String(selectedJob.client_id || selectedJob.client_name || '')] || selectedJob.client_name || '-'}</span>
                   <span>Posted date: {selectedJob.posted || '-'}</span>
                   <span>JOB ID: {String(selectedJob.job_id || selectedJob.job_ref || selectedJob.id || '')}</span>
-                  {selectedJob.status === 'Closed' && (
-                    <span>Closed date: {selectedJob.closed_date || selectedJob.closed_at || selectedJob.updated_at || '-'}</span>
-                  )}
+                  {String(selectedJob.status || '').toLowerCase() === 'closed' && (
+                      <span>Closed date: {selectedJob.closed_date || selectedJob.closed_at || selectedJob.updated_at || '-'}</span>
+                    )}
                 </div>
               </div>
               <button className="drawer-close" onClick={closeDetails}>✕</button>
@@ -506,7 +510,7 @@ export default function JobsPage() {
                   </div>
                 </div>
 
-                <p style={{ marginTop: 8 }}><strong>Status:</strong> <span className={`badge ${selectedJob.status === 'Open' ? 'progress' : 'dropped'}`}>{selectedJob.status}</span></p>
+                <p style={{ marginTop: 8 }}><strong>Status:</strong> <span className={`badge ${String(selectedJob.status || '').toLowerCase() === 'open' ? 'progress' : 'dropped'}`}>{String(selectedJob.status || '').replace(/^./, (c) => c.toUpperCase())}</span></p>
               </div>
             </div>
 
@@ -621,9 +625,10 @@ export default function JobsPage() {
                 </div>
                 <div className="field">
                   <label>Status</label>
-                  <select value={newJob.status} onChange={(e) => setNewJob({ ...newJob, status: e.target.value })}>
-                    <option value="Open">Open</option>
-                    <option value="Closed">Closed</option>
+                  <select value={String(newJob.status || '').toLowerCase()} onChange={(e) => setNewJob({ ...newJob, status: e.target.value })}>
+                    <option value="draft">Draft</option>
+                    <option value="open">Open</option>
+                    <option value="closed">Closed</option>
                   </select>
                 </div>
               </div>
