@@ -34,12 +34,14 @@
               // Redirect user to the appropriate recovery route (removes tokens from visible URL)
               const base = window.location.origin || ''
               const recoveryPath = tokenType === 'set-password' ? '/set-password' : '/reset'
-              window.history.replaceState({}, '', base + recoveryPath + '?recovery=1')
+              const query = window.location.search ? window.location.search + '&recovery=1' : '?recovery=1'
+              window.history.replaceState({}, '', base + recoveryPath + query)
             } catch (e) {
               // fallback to /reset
               try { sessionStorage.setItem('supabase_recovery', 'reset') } catch (e) {}
               const base = window.location.origin || ''
-              window.history.replaceState({}, '', base + '/reset?recovery=1')
+              const query = window.location.search ? window.location.search + '&recovery=1' : '?recovery=1'
+              window.history.replaceState({}, '', base + '/reset' + query)
             }
           }
         } catch (e) {
@@ -47,8 +49,8 @@
         }
       })()
     </script>
-    <script type="module" crossorigin src="/assets/index-DV6S3kVW.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-BosZyffP.css">
+    <script type="module" crossorigin src="/assets/index-DG-pFVks.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CLcax4GS.css">
   </head>
   <body>
     <div id="root"></div>
@@ -75,12 +77,14 @@
               // Redirect user to the appropriate recovery route (removes tokens from visible URL)
               const base = window.location.origin || ''
               const recoveryPath = tokenType === 'set-password' ? '/set-password' : '/reset'
-              window.history.replaceState({}, '', base + recoveryPath + '?recovery=1')
+              const query = window.location.search ? window.location.search + '&recovery=1' : '?recovery=1'
+              window.history.replaceState({}, '', base + recoveryPath + query)
             } catch (e) {
               // fallback to /reset
               try { sessionStorage.setItem('supabase_recovery', 'reset') } catch (e) {}
               const base = window.location.origin || ''
-              window.history.replaceState({}, '', base + '/reset?recovery=1')
+              const query = window.location.search ? window.location.search + '&recovery=1' : '?recovery=1'
+              window.history.replaceState({}, '', base + '/reset' + query)
             }
           }
         } catch (e) {

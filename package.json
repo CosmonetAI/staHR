@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node ./node_modules/vite/bin/vite.js build",
+    "start": "node server.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -24,6 +25,8 @@
     "react-icons": "^4.10.1",
     "react-router-dom": "^6.18.0",
     "xlsx": "^0.18.5",
+    "pdfjs-dist": "^3.6.172",
+    "tesseract.js": "^2.1.5",
     "zod": "^3.23.2"
   },
   "devDependencies": {

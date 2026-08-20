@@ -121,6 +121,7 @@ export default function JobsPage() {
     const e: Record<string,string> = {}
     if (!j) return { valid: false, errors: e }
     if (!j.title || !String(j.title).trim()) e.title = 'Job title is required'
+    if (!j.client_id || !String(j.client_id).trim()) e.client_id = 'Client is required'
     if (!j.location || !String(j.location).trim()) e.location = 'Location is required'
     const openings = Number(j.openings)
     if (!Number.isFinite(openings) || openings <= 0) e.openings = 'Openings must be a positive number'
@@ -538,7 +539,13 @@ export default function JobsPage() {
             </div>
             <div className="drawer-body" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
               <div style={{ marginBottom: 12 }}>
-                <JobDescriptionUploader onParsed={(data: ParsedJobDescription) => applyParsedToNewJob(data)} />
+                <JobDescriptionUploader
+                  onParsed={(data: ParsedJobDescription) => applyParsedToNewJob(data)}
+                  onUploaded={(info: { path: string, publicUrl?: string }) => {
+                    if (!newJob) return
+                    setNewJob({ ...newJob, job_file_path: info.path, job_file_url: info.publicUrl || '' })
+                  }}
+                />
               </div>
                 <div className="field-row">
                 <div className="field">
@@ -558,15 +565,17 @@ export default function JobsPage() {
                   <input placeholder="e.g. Engineering" value={newJob.department || ''} onChange={(e) => setNewJob({ ...newJob, department: e.target.value })} style={autoFilledFields.includes('department') ? { outline: '2px solid #1976d2' } : undefined} />
                 </div>
                 <div className="field">
-                  <label>Client</label>
-                  <select value={newJob.client_id || ''} onChange={(e) => {
+                  <label>Client *</label>
+                  <select required value={newJob.client_id || ''} onChange={(e) => {
                     const id = e.target.value
                     const c = clients.find(x => String(x.id) === id)
                     setNewJob({ ...newJob, client_id: id, client_name: c ? c.name : '' })
+                    clearError('client_id')
                   }}>
                     <option value="">— none —</option>
                     {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
+                  {jobErrors.client_id && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{jobErrors.client_id}</div>}
                 </div>
               </div>
               <div className="field-row">

@@ -9,6 +9,8 @@ type AuthContext = {
   signIn: (email: string, password: string) => Promise<void>
   signUp: (payload: { email: string; password: string; full_name?: string }) => Promise<any>
   signOut: () => Promise<void>
+  resetPassword: (email: string) => Promise<{ error: any }>
+  updatePassword: (password: string) => Promise<{ error: any }>
 }
 
 const ctx = createContext<AuthContext>({
@@ -16,7 +18,9 @@ const ctx = createContext<AuthContext>({
   loading: true,
   signIn: async () => {},
   signUp: async () => {},
-  signOut: async () => {}
+  signOut: async () => {},
+  resetPassword: async () => ({ error: new Error('Auth provider not initialized') }),
+  updatePassword: async () => ({ error: new Error('Auth provider not initialized') })
 })
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -68,7 +72,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               // replace URL to the appropriate recovery path (invite -> /set-password, recovery -> /reset)
               const base = window.location.origin || ''
               const recoveryPath = type === 'invite' ? '/set-password' : '/reset'
-              const newUrl = base + recoveryPath + '?recovery=1'
+              const query = window.location.search ? `${window.location.search}&recovery=1` : '?recovery=1'
+              const newUrl = base + recoveryPath + query
               console.debug('useAuth: replacing URL to', newUrl)
               window.history.replaceState({}, '', newUrl)
               // update user state quickly
@@ -85,7 +90,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           try {
             const base = window.location.origin || ''
             const recoveryPath = type === 'invite' ? '/set-password' : '/reset'
-            const newUrl = base + recoveryPath + '?recovery=1'
+            const query = window.location.search ? `${window.location.search}&recovery=1` : '?recovery=1'
+            const newUrl = base + recoveryPath + query
             window.history.replaceState({}, '', newUrl)
           } catch (e) {}
         } else {
@@ -144,42 +150,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const { data, error } = await supabase.auth.signUp({ email: payload.email, password: payload.password, options: { emailRedirectTo: redirectTo, data: { full_name: payload.full_name } } } as any)
     if (error) throw error
 
-    // If a user id is returned, attempt to insert profile row into `profiles` table
-    const userId = data?.user?.id
-    if (userId) {
-      const profile = {
-        id: userId,
-        email: payload.email,
-        full_name: payload.full_name || null
-      }
-      try {
-        await supabase.from('profiles').insert(profile)
-      } catch (e) {
-        // non-fatal: continue even if profile insert fails
-        console.warn('Failed to insert profile', e)
-      }
-      // try to send a signup confirmation/welcome email via centralized functions/email
-      try {
-        const FUNCTIONS_BASE = (import.meta.env.VITE_FUNCTIONS_BASE as string) || '/functions/v1'
-        const appName = (import.meta.env.VITE_APP_NAME as string) || (typeof window !== 'undefined' && window.location && window.location.hostname) || 'staHR'
-        const subject = `Welcome to ${appName}`
-        const html = `<p>Hi ${payload.full_name || ''},</p><p>Thanks for signing up for ${appName}. You can sign in at <a href="${redirectTo || '/'}">${redirectTo || '/'}</a>.</p>`
-        const anon = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '')
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-        if (anon) {
-          headers['apikey'] = anon
-          headers['Authorization'] = `Bearer ${anon}`
-        }
-        await fetch(`${FUNCTIONS_BASE.replace(/\/$/, '')}/email`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ type: 'notification', email: payload.email, subject, html })
-        })
-      } catch (e) {
-        console.warn('Failed to send signup confirmation email', e)
-      }
-    }
-
     return data
   }
 
@@ -193,6 +163,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const resetPassword = async (email: string, captchaToken?: string) => {
     const redirectTo = (typeof window !== 'undefined' && window.location && window.location.origin) ? `${window.location.origin}/reset` : undefined
     const { error } = await supabase.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } as any : undefined as any)
+    if (error) throw error
     return { error }
   }
 
