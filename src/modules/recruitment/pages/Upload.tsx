@@ -5,6 +5,7 @@ import { UploadService } from '../services/uploadService'
 import { CandidateService } from '../services/candidateService'
 import { JobService } from '../services/jobService'
 import { useToast } from '../../../components/ToastProvider'
+import { useQueryClient } from '@tanstack/react-query'
 
 const valueOrDash = (value: any) => {
   const text = String(value ?? '').trim()
@@ -29,6 +30,7 @@ export default function Upload() {
   const [preview, setPreview] = useState<any[]>([])
   const [isImporting, setIsImporting] = useState(false)
   const addToast = useToast()
+  const queryClient = useQueryClient()
 
   const rowsFlat = preview.flatMap(p => p.rows || [])
   const totalRows = rowsFlat.length
@@ -105,6 +107,7 @@ export default function Upload() {
       try { await UploadService.createUpload({ file_name: `import_${new Date().toISOString()}`, total_records: rowsFlat.length }) } catch (e) { console.debug('createUpload skipped', e) }
       const inserted = await CandidateService.createMany(rowsFlat)
       setIsImporting(false)
+        try { await queryClient.invalidateQueries(['candidates']) } catch (e) {}
       const insertedCount = Array.isArray(inserted) ? inserted.length : (inserted?.inserted?.length || 0)
       addToast(`Imported ${insertedCount} candidates`, 'success')
     } catch (err) {

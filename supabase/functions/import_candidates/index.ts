@@ -370,6 +370,7 @@ serve(async (req) => {
           const email = (c.email || '').toString().trim()
           const jobId = c.applied_job_id || null
           if (email) {
+            // 1) try exact match by email + applied_job_id (existing behaviour)
             const existingRes: any = await writerCandidates.from('candidates').select('*').eq('email', email).eq('applied_job_id', jobId).limit(1).maybeSingle()
             if (!existingRes.error && existingRes.data) {
               const existingId = existingRes.data.id
@@ -382,6 +383,46 @@ serve(async (req) => {
               updated.push(upData)
               continue
             }
+
+            // 2) if not found, try matching by email + role (same role) and update that candidate
+            try {
+              const existingByEmailRole: any = await writerCandidates.from('candidates').select('*').eq('email', email).ilike('role', c.role || '').limit(1).maybeSingle()
+              if (!existingByEmailRole.error && existingByEmailRole.data) {
+                const existingId = existingByEmailRole.data.id
+                const { data: upData, error: upErr } = await writerCandidates.from('candidates').update(c).eq('id', existingId).select().single()
+                if (upErr) {
+                  console.error('candidate update error', upErr)
+                  if (up) await (sbAdmin || sb).from('uploads').update({ status: 'failed', report: { error: upErr.message } }).eq('id', up.id)
+                  return new Response(JSON.stringify({ error: 'Failed to update existing candidate', details: upErr.message || upErr }), { status: 500, headers: corsHeaders })
+                }
+                updated.push(upData)
+                continue
+              }
+            } catch (e) {
+              // ignore lookup errors and continue to next checks
+            }
+          }
+
+          // 3) If no email match, or email absent, try matching by name + role (treat same role+name as same candidate)
+          try {
+            const name = (c.name || '').toString().trim()
+            const role = (c.role || '').toString().trim()
+            if (name && role) {
+              const existingByNameRole: any = await writerCandidates.from('candidates').select('*').ilike('name', name).ilike('role', role).limit(1).maybeSingle()
+              if (!existingByNameRole.error && existingByNameRole.data) {
+                const existingId = existingByNameRole.data.id
+                const { data: upData, error: upErr } = await writerCandidates.from('candidates').update(c).eq('id', existingId).select().single()
+                if (upErr) {
+                  console.error('candidate update error', upErr)
+                  if (up) await (sbAdmin || sb).from('uploads').update({ status: 'failed', report: { error: upErr.message } }).eq('id', up.id)
+                  return new Response(JSON.stringify({ error: 'Failed to update existing candidate', details: upErr.message || upErr }), { status: 500, headers: corsHeaders })
+                }
+                updated.push(upData)
+                continue
+              }
+            }
+          } catch (e) {
+            console.error('failed to check existing candidate by name+role', e)
           }
         } catch (e) {
           console.error('failed to check existing candidate', e)
