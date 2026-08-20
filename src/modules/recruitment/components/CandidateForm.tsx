@@ -71,6 +71,21 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
     }
   }, [form.applied_job_id, jobs])
 
+  const [jobQuery, setJobQuery] = React.useState<string>('')
+  const [showJobDropdown, setShowJobDropdown] = React.useState(false)
+
+  React.useEffect(() => {
+    try {
+      const key = String(form.applied_job_id || '')
+      if (!key) { setJobQuery(''); return }
+      const byFriendly = jobs.find(j => String(j.job_id || j.job_ref || '').toLowerCase() === key.toLowerCase())
+      if (byFriendly) { setJobQuery(`${String(byFriendly.title || '').trim()} — ${String(byFriendly.job_id || byFriendly.job_ref || byFriendly.id || '')}`); return }
+      const byId = jobs.find(j => String(j.id || '') === key)
+      if (byId) { setJobQuery(`${String(byId.title || '').trim()} — ${String(byId.job_id || byId.job_ref || byId.id || '')}`); return }
+      setJobQuery(key)
+    } catch (e) { setJobQuery(String(form.applied_job_id || '')) }
+  }, [form.applied_job_id, jobs])
+
   const validate = () => {
     const e: Record<string,string> = {}
     if (!form.name || !String(form.name).trim()) e.name = 'Candidate name is required'
@@ -200,19 +215,43 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
                 if (found) setForm(prev => ({ ...prev, role: found.title || prev.role, applied_job_title: found.title || prev.applied_job_title }))
               }} style={{ flex: 1 }} /> */}
 
-              <select required value={selectedJobValue || ''} onChange={(e) => {
-                const selected = e.target.value
-                const j = jobs.find(x => String(x.job_id || x.job_ref || x.id) === String(selected))
-                if (j) {setForm({ ...form, applied_job_id: String(selected), role: j.title || form.role, applied_job_title: j.title || form.applied_job_title });clearError("applied_job_id");clearError("role");}
-                else setForm({ ...form, applied_job_id: '' })
-              }} style={{ width: 260 }}>
-                <option value="">— select job —</option>
-                {jobs.map(j => {
-                  const storedId = j.job_id || j.job_ref || j.id
-                  const displayId = String(storedId || '')
-                  return <option key={j.id} value={displayId}>{displayId}</option>
-                })}
-              </select>
+              <div style={{ position: 'relative' }}>
+                <input
+                  required
+                  value={jobQuery}
+                  onChange={(e) => { setJobQuery(e.target.value); setShowJobDropdown(true) }}
+                  onFocus={() => setShowJobDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowJobDropdown(false), 150)}
+                  placeholder="Search job by title or id..."
+                  style={{ width: 260, padding: '8px 10px' }}
+                />
+                {showJobDropdown && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--paper-raised)', border: '1px solid var(--line)', borderRadius: 6, maxHeight: 220, overflow: 'auto', zIndex: 40 }}>
+                    <div style={{ padding: 8 }}>
+                      {jobs.filter(j => {
+                        const label = `${String(j.title || '').toLowerCase()} ${String(j.job_id || j.job_ref || j.id || '').toLowerCase()}`
+                        return label.includes(String(jobQuery || '').toLowerCase())
+                      }).map(j => {
+                        const storedId = j.job_id || j.job_ref || j.id
+                        const displayId = String(storedId || '')
+                        const title = String(j.title || '').trim()
+                        const label = title ? `${title} — ${displayId}` : displayId
+                        return (
+                          <div key={j.id} style={{ padding: '6px 8px', cursor: 'pointer' }} onMouseDown={(ev) => { ev.preventDefault(); setForm({ ...form, applied_job_id: String(displayId), role: j.title || form.role, applied_job_title: j.title || form.applied_job_title }); clearError('applied_job_id'); clearError('role'); setJobQuery(label); setShowJobDropdown(false); }}>
+                            {label}
+                          </div>
+                        )
+                      })}
+                      {jobs.filter(j => {
+                        const label = `${String(j.title || '').toLowerCase()} ${String(j.job_id || j.job_ref || j.id || '').toLowerCase()}`
+                        return label.includes(String(jobQuery || '').toLowerCase())
+                      }).length === 0 && (
+                        <div style={{ padding: '8px', color: '#64748b' }}>No jobs match</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             {errors.applied_job_id && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{errors.applied_job_id}</div>}
           </div>
