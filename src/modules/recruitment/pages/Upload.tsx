@@ -3,7 +3,9 @@ import FileUpload from '../../../components/FileUpload'
 import { parseCSVFile } from '../../../utils/csvUtils'
 import { UploadService } from '../services/uploadService'
 import { CandidateService } from '../services/candidateService'
+import { JobService } from '../services/jobService'
 import { useToast } from '../../../components/ToastProvider'
+import { useQueryClient } from '@tanstack/react-query'
 
 const valueOrDash = (value: any) => {
   const text = String(value ?? '').trim()
@@ -28,6 +30,7 @@ export default function Upload() {
   const [preview, setPreview] = useState<any[]>([])
   const [isImporting, setIsImporting] = useState(false)
   const addToast = useToast()
+  const queryClient = useQueryClient()
 
   const rowsFlat = preview.flatMap(p => p.rows || [])
   const totalRows = rowsFlat.length
@@ -47,8 +50,39 @@ export default function Upload() {
       }
       return String(v)
     }
-    const coerced = (rows || []).map(r => ({ ...r, interview_slot: coerce(r.interview_slot), confirmed_availability: coerce(r.confirmed_availability), availability: coerce(r.availability), f2f: coerce(r.f2f) }))
-    setPreview([{ sheet: file.name, rows: coerced, errors }])
+    let coerced = (rows || []).map(r => ({ ...r, interview_slot: coerce(r.interview_slot), confirmed_availability: coerce(r.confirmed_availability), availability: coerce(r.availability), f2f: coerce(r.f2f) }))
+
+    // Check existing jobs and identify any missing roles referenced in the CSV
+    let missingRoles: string[] = []
+    try {
+      const jobs = await JobService.list()
+      const jobKeys = new Set<string>()
+      ;(jobs || []).forEach((j: any) => {
+        ;[j.title, j.job_id, j.job_ref, j.id].forEach((k: any) => {
+          if (k != null) jobKeys.add(String(k).toLowerCase().trim())
+        })
+      })
+
+      const csvRoles = Array.from(new Set(coerced.map((r: any) => String(r.role || r.job_role || r.applied_job_title || '').trim()).filter(Boolean)))
+      missingRoles = csvRoles.filter((role) => !jobKeys.has(role.toLowerCase()))
+      // Mark individual rows that reference missing roles so they can be flagged
+      const missingSet = new Set(missingRoles.map(r => r.toLowerCase()))
+      coerced = coerced.map((r: any) => {
+        const roleName = String(r.role || r.job_role || r.applied_job_title || '').trim()
+        if (roleName && missingSet.has(roleName.toLowerCase())) {
+          return { ...r, missing_job_role: roleName, missing_job: true }
+        }
+        return { ...r, missing_job: false }
+      })
+      if (missingRoles.length > 0) {
+        addToast(`Missing jobs: ${missingRoles.join(', ')} — please add these jobs before importing.`, 'error')
+      }
+    } catch (e) {
+      // If job lookup fails, don't block preview; surface no missingRoles
+      missingRoles = []
+    }
+
+    setPreview([{ sheet: file.name, rows: coerced, errors: errors || [], missingRoles }])
     const total = (rows || []).length
     if (!total) {
       // No rows parsed; do not display toasts here. Keep preview so user can inspect file.
@@ -62,12 +96,18 @@ export default function Upload() {
       addToast('No candidates to import', 'error')
       return
     }
+    const hasMissing = preview.some(p => p.missingRoles && p.missingRoles.length > 0)
+    if (hasMissing) {
+      addToast('Cannot import: some roles referenced in the file do not exist. Create the jobs first.', 'error')
+      return
+    }
     try { console.debug('Upload.importParsed: prepared rowsFlat', { sheets: preview.map(r => r.sheet), total: rowsFlat.length, edgeUrl: import.meta.env.VITE_EDGE_IMPORT_URL }) } catch (e) {}
     try {
       setIsImporting(true)
       try { await UploadService.createUpload({ file_name: `import_${new Date().toISOString()}`, total_records: rowsFlat.length }) } catch (e) { console.debug('createUpload skipped', e) }
       const inserted = await CandidateService.createMany(rowsFlat)
       setIsImporting(false)
+        try { await queryClient.invalidateQueries(['candidates']) } catch (e) {}
       const insertedCount = Array.isArray(inserted) ? inserted.length : (inserted?.inserted?.length || 0)
       addToast(`Imported ${insertedCount} candidates`, 'success')
     } catch (err) {
@@ -112,6 +152,18 @@ export default function Upload() {
             
           </div>
 
+          {preview.some(p => p.missingRoles && p.missingRoles.length > 0) && (
+            <div className="import-error">
+              <strong>Missing jobs detected:</strong>
+              <div>
+                {preview.flatMap(p => p.missingRoles || []).map((r: any, i: number) => (
+                  <div key={`missing-${i}`}>{r}</div>
+                ))}
+              </div>
+              <div>Please create these jobs before importing, or update the CSV to reference existing jobs.</div>
+            </div>
+          )}
+
           {totalErrors > 0 && (
             <div className="import-warning">
               {totalErrors} row{totalErrors === 1 ? '' : 's'} need attention before import.
@@ -131,6 +183,11 @@ export default function Upload() {
                     {valueOrDash(candidate.selstatus)}
                   </span>
                 </div>
+                  {candidate.missing_job_role && (
+                    <div style={{ marginTop: 8 }}>
+                      <span className="badge missing">Missing job: {candidate.missing_job_role}</span>
+                    </div>
+                  )}
 
                 <div className="candidate-form-grid">
                   <div className="review-field">

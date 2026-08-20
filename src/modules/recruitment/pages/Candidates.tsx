@@ -21,7 +21,8 @@ import {
   FaPhoneAlt,
   FaStickyNote,
   FaTrashAlt,
-  FaUserCheck
+  FaUserCheck,
+  FaExclamationTriangle
 } from 'react-icons/fa'
 import * as XLSX from 'xlsx'
 import { JobService } from '../services/jobService'
@@ -423,6 +424,14 @@ const recordsPerPage = 10;
     return g
   }, [filteredRows])
 
+  const jobTitlesSet = useMemo(() => {
+    const s = new Set<string>()
+    Object.values(jobsMap || {}).forEach((j: any) => {
+      if (j && j.title) s.add(String(j.title).toLowerCase().trim())
+    })
+    return s
+  }, [jobsMap])
+
   const STAGE_ORDER = ['progress', 'hold', 'selected']
   const STATUS_LABEL: any = { selected: 'Selected', rejected: 'Rejected', hold: 'On hold', progress: 'In progress', dropped: 'Dropped out' }
   const STATUS_OPTIONS = ['progress', 'hold', 'selected', 'rejected', 'dropped']
@@ -756,8 +765,27 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
                               setSelectedIds(prev=> e.target.checked ? [...new Set([...prev,c.id])] : prev.filter(x=>x!==c.id))
                             }} /></td>
                         <td>
-                          <div className="cand-name">{c.name}</div>
-                          <div className="cand-sub">{c.email}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div>
+                              <div className="cand-name">{c.name}</div>
+                              <div className="cand-sub">{c.email}</div>
+                            </div>
+                            {(() => {
+                              const roleName = String(c.role || c.job_role || c.applied_job_title || '').trim()
+                              const missingRole = roleName && !jobTitlesSet.has(roleName.toLowerCase())
+                              const missingJobId = !String(c.applied_job_id || c.job_id || c.job_ref || '').trim()
+                              const msgs: string[] = []
+                              if (missingRole) msgs.push(`Referenced job '${roleName}' not found`)
+                              if (missingJobId) msgs.push('No job id assigned')
+                              if (!msgs.length) return null
+                              const color = missingRole ? '#b91c1c' : '#b45309'
+                              return (
+                                <span title={msgs.join('\n')} style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                  <FaExclamationTriangle style={{ color }} />
+                                </span>
+                              )
+                            })()}
+                          </div>
                         </td>
                         <td className="experience-col">{formatExperience(c.exp)}</td>
                         <td className="mono">
@@ -823,7 +851,18 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
                                     <div className="candidate-profile-name">{display(c.name)}</div>
                                     
                                        <div style={{ marginTop: 6, display: 'flex', gap: 16, alignItems: 'center' }}>
-                                         <div style={{ fontSize: 13 }}><strong>Job Role:</strong> <span style={{ marginLeft: 6 }}>{display(c.applied_job_title || c.role || '-')}</span></div>
+                                                 <div style={{ fontSize: 13 }}><strong>Job Role:</strong> <span style={{ marginLeft: 6 }}>{display(c.applied_job_title || c.role || '-')}</span></div>
+                                                 {(() => {
+                                                   const roleName = String(c.applied_job_title || c.role || '').trim()
+                                                   const missing = roleName && !jobTitlesSet.has(roleName.toLowerCase())
+                                                   const missingJobId = !String(c.applied_job_id || c.job_id || c.job_ref || '').trim()
+                                                   const msgs: string[] = []
+                                                   if (missing) msgs.push(`Referenced job '${roleName}' not found`)
+                                                   if (missingJobId) msgs.push('Job id not assigned')
+                                                   if (!msgs.length) return null
+                                                   const color = missing ? '#b91c1c' : '#b45309'
+                                                   return <div style={{ marginLeft: 12 }}><span title={msgs.join('\n')} style={{ display: 'inline-flex', alignItems: 'center', color }}><FaExclamationTriangle /> <span style={{ marginLeft: 6 }}>{msgs.length === 1 ? msgs[0] : 'Multiple issues'}</span></span></div>
+                                                 })()}
                                          <div style={{ fontSize: 13 }}>
                                            <strong>Job ID:</strong>
                                            <span style={{ marginLeft: 6 }}>
