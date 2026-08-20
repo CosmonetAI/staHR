@@ -531,13 +531,13 @@ export default function RecruitmentDashboard() {
       const selected = related.filter((r) => r._status === 'selected').length
 
       return {
-        id: String(job.id || job.job_id || job.title),
-        title: String(job.title || 'Untitled Job'),
-        applicants: related.length,
-        interviews,
-        selected,
-        status: String(job.status || 'Open')
-      }
+          id: String(job.id || job.job_id || job.title),
+          title: String(job.title || 'Untitled Job'),
+          applicants: related.length,
+          interviews,
+          selected,
+          status: String(job.status || 'open')
+        }
     })
 
     const anyFilterActive = Object.values(filters).some((v) => Boolean(v && String(v).trim()))
