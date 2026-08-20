@@ -673,7 +673,12 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
                 if (errors && errors.length) {
                   console.debug('CSV parse errors', errors)
                 }
-                addToast(`Imported ${newRows.length} candidates`, 'success')
+                // Show toast based on import metadata (inserted vs updated)
+                const meta = (inserted as any).__importMeta || { inserted: newRows.length, updated: 0 }
+                if (meta.inserted > 0 && meta.updated > 0) addToast(`Imported ${meta.inserted} and updated ${meta.updated} candidates`, 'success')
+                else if (meta.inserted > 0) addToast(`Imported ${meta.inserted} candidates`, 'success')
+                else if (meta.updated > 0) addToast(`Updated ${meta.updated} candidates`, 'success')
+                else addToast(`No changes applied`, 'info')
               } catch (err) {
                 addToast('Import failed', 'error')
               }
@@ -1189,7 +1194,11 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
               const inserted = await CandidateService.createMany(importPreview)
               const newRows = inserted.map((p: any) => ({ id: p.id, name: p.name, email: p.email, phone: p.phone, exp: p.experience ? String(p.experience) : '', cctc: p.current_ctc ? String(p.current_ctc) : '', ectc: p.expected_ctc ? String(p.expected_ctc) : '', location: p.current_location || '', np: p.notice_period || '', selstatus: p.selstatus || 'progress', role: p.job_role || p.role || '', linkedin: p.linkedin || '', client_feedback: p.client_feedback || '', created_at: p.created_at, updated_at: p.updated_at }))
               setRows(prev => [...newRows, ...prev])
-              addToast(`Imported ${newRows.length} candidates`, 'success')
+              const meta = (inserted as any).__importMeta || { inserted: newRows.length, updated: 0 }
+              if (meta.inserted > 0 && meta.updated > 0) addToast(`Imported ${meta.inserted} and updated ${meta.updated} candidates`, 'success')
+              else if (meta.inserted > 0) addToast(`Imported ${meta.inserted} candidates`, 'success')
+              else if (meta.updated > 0) addToast(`Updated ${meta.updated} candidates`, 'success')
+              else addToast(`No changes applied`, 'info')
               setImportPreview([])
               setImportErrors([])
               setDrawerOpen(false)

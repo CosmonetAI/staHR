@@ -682,7 +682,11 @@ export default function RecruitmentDashboard() {
       try {
         const inserted = await CandidateService.createMany(importPreview as any)
         setRows((prev) => [...inserted, ...prev])
-        addToast(`Imported ${inserted.length} candidates`, 'success')
+        const meta = (inserted as any).__importMeta || { inserted: inserted.length, updated: 0 }
+        if (meta.inserted > 0 && meta.updated > 0) addToast(`Imported ${meta.inserted} and updated ${meta.updated} candidates`, 'success')
+        else if (meta.inserted > 0) addToast(`Imported ${meta.inserted} candidates`, 'success')
+        else if (meta.updated > 0) addToast(`Updated ${meta.updated} candidates`, 'success')
+        else addToast(`No changes applied`, 'info')
         setImportPreview([])
         setImportErrors([])
         setDrawerOpen(false)
