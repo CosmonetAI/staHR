@@ -141,9 +141,14 @@ export const CandidateService = {
         f2f: c.f2f
       }))
       const ret = await postEdge('/import_candidates', { upload: { file_name: 'bulk_import', total_records: payload.length }, candidates: payload }, 'POST')
-      if (ret && ret.inserted) return ret.inserted
-      if (Array.isArray(ret)) return ret
-      return []
+      // Normalize response: prefer explicit inserted/updated arrays from the edge function
+      const inserted: any[] = (ret && ret.inserted) ? ret.inserted : (Array.isArray(ret) ? ret : [])
+      const updated: any[] = (ret && ret.updated) ? ret.updated : []
+      try {
+        // Attach meta counts to the returned array so callers can read inserted/updated counts
+        ;(inserted as any).__importMeta = { inserted: inserted.length, updated: updated.length, insertedRows: inserted, updatedRows: updated }
+      } catch (e) {}
+      return inserted
     } catch (e: any) {
       const msg = e?.message || String(e)
       throw new Error('Failed to import candidates: ' + msg)

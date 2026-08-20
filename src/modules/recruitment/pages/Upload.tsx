@@ -108,8 +108,11 @@ export default function Upload() {
       const inserted = await CandidateService.createMany(rowsFlat)
       setIsImporting(false)
         try { await queryClient.invalidateQueries(['candidates']) } catch (e) {}
-      const insertedCount = Array.isArray(inserted) ? inserted.length : (inserted?.inserted?.length || 0)
-      addToast(`Imported ${insertedCount} candidates`, 'success')
+      const meta = (inserted as any).__importMeta || { inserted: Array.isArray(inserted) ? inserted.length : 0, updated: 0 }
+      if (meta.inserted > 0 && meta.updated > 0) addToast(`Imported ${meta.inserted} and updated ${meta.updated} candidates`, 'success')
+      else if (meta.inserted > 0) addToast(`Imported ${meta.inserted} candidates`, 'success')
+      else if (meta.updated > 0) addToast(`Updated ${meta.updated} candidates`, 'success')
+      else addToast(`No changes applied`, 'info')
     } catch (err) {
       setIsImporting(false)
       console.error('Import failed', err)
