@@ -360,17 +360,50 @@ serve(async (req) => {
       })
 
       const candidatesWithUpload = candidates.map((c: any) => ({ ...allowed(c), ...(up ? { upload_id: up.id } : {}) }))
-      // Use admin client for candidate inserts when available to avoid RLS failures.
       const writerCandidates = sbAdmin || sb
-      const { data: inserted, error: insErr } = await writerCandidates.from('candidates').insert(candidatesWithUpload).select()
-      if (insErr) {
-        console.error('candidates insert error', insErr)
-        if (up) await (sbAdmin || sb).from('uploads').update({ status: 'failed', report: { error: insErr.message } }).eq('id', up.id)
-        return new Response(JSON.stringify({ error: 'Failed to insert candidates', details: insErr.message || insErr }), { status: 500, headers: corsHeaders })
+
+      const toInsert: any[] = []
+      const updated: any[] = []
+
+      for (const c of candidatesWithUpload) {
+        try {
+          const email = (c.email || '').toString().trim()
+          const jobId = c.applied_job_id || null
+          if (email) {
+            const existingRes: any = await writerCandidates.from('candidates').select('*').eq('email', email).eq('applied_job_id', jobId).limit(1).maybeSingle()
+            if (!existingRes.error && existingRes.data) {
+              const existingId = existingRes.data.id
+              const { data: upData, error: upErr } = await writerCandidates.from('candidates').update(c).eq('id', existingId).select().single()
+              if (upErr) {
+                console.error('candidate update error', upErr)
+                if (up) await (sbAdmin || sb).from('uploads').update({ status: 'failed', report: { error: upErr.message } }).eq('id', up.id)
+                return new Response(JSON.stringify({ error: 'Failed to update existing candidate', details: upErr.message || upErr }), { status: 500, headers: corsHeaders })
+              }
+              updated.push(upData)
+              continue
+            }
+          }
+        } catch (e) {
+          console.error('failed to check existing candidate', e)
+        }
+        toInsert.push(c)
       }
-      if (up) await (sbAdmin || sb).from('uploads').update({ status: 'succeeded', successful_records: inserted.length, failed_records: candidates.length - inserted.length }).eq('id', up.id)
-      console.log('import succeeded', { uploadId: up?.id, insertedCount: inserted.length })
-      return new Response(JSON.stringify({ upload: up, inserted }), { status: 200, headers: corsHeaders })
+
+      let inserted: any[] = []
+      if (toInsert.length > 0) {
+        const { data: insertedData, error: insErr } = await writerCandidates.from('candidates').insert(toInsert).select()
+        if (insErr) {
+          console.error('candidates insert error', insErr)
+          if (up) await (sbAdmin || sb).from('uploads').update({ status: 'failed', report: { error: insErr.message } }).eq('id', up.id)
+          return new Response(JSON.stringify({ error: 'Failed to insert candidates', details: insErr.message || insErr }), { status: 500, headers: corsHeaders })
+        }
+        inserted = insertedData || []
+      }
+
+      const totalSucceeded = (inserted.length) + (updated.length)
+      if (up) await (sbAdmin || sb).from('uploads').update({ status: 'succeeded', successful_records: totalSucceeded, failed_records: candidates.length - totalSucceeded }).eq('id', up.id)
+      console.log('import succeeded', { uploadId: up?.id, insertedCount: inserted.length, updatedCount: updated.length })
+      return new Response(JSON.stringify({ upload: up, inserted, updated }), { status: 200, headers: corsHeaders })
     }
 
     // PUT/PATCH - update a candidate by id
