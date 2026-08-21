@@ -363,13 +363,12 @@ async function parseExcelFile(file: File): Promise<ParseResult> {
       const sheetRows = rowsFromSheet(workbook.Sheets[sheetName])
       sheetRows.forEach((raw, index) => {
         const normalized = normalizeRow(raw)
+        // Always build candidate: convert with best-effort values and preserve raw fields.
+        const candidate = buildCandidate(normalized, file.name, sheetName)
+        // Attach any validation hints but do not block upload
         const issues = getMissingOrInvalidFields(normalized)
-        if (issues.length === 0) {
-          const candidate = buildCandidate(normalized, file.name, sheetName)
-          rows.push(candidate)
-        } else {
-          errors.push(`${sheetName} row ${index + 2}: ${issues.join('; ')}`)
-        }
+        if (issues.length > 0) candidate._validation_issues = issues.join('; ')
+        rows.push(candidate)
       })
     })
 
@@ -392,13 +391,10 @@ function parsePapaCSVFile(file: File): Promise<ParseResult> {
 
         for (let i = 0; i < rawRows.length; i++) {
           const normalized = normalizeRow(rawRows[i])
+          const candidate = buildCandidate(normalized, file.name, file.name)
           const issues = getMissingOrInvalidFields(normalized)
-          if (issues.length === 0) {
-            const candidate = buildCandidate(normalized, file.name, file.name)
-            rows.push(candidate)
-          } else {
-            errors.push(`Row ${i + 2}: ${issues.join('; ')}`)
-          }
+          if (issues.length > 0) candidate._validation_issues = issues.join('; ')
+          rows.push(candidate)
         }
 
         resolve({ rows, errors })

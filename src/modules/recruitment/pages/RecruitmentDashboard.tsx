@@ -215,6 +215,7 @@ export default function RecruitmentDashboard() {
   const [importPreview, setImportPreview] = useState<Record<string, any>[]>([])
   const [importErrors, setImportErrors] = useState<Record<string, any>[]>([])
   const [showAllSkills, setShowAllSkills] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
 
   const [filters, setFilters] = useState<DashboardFilters>({
     dateFrom: '',
@@ -531,13 +532,13 @@ export default function RecruitmentDashboard() {
       const selected = related.filter((r) => r._status === 'selected').length
 
       return {
-        id: String(job.id || job.job_id || job.title),
-        title: String(job.title || 'Untitled Job'),
-        applicants: related.length,
-        interviews,
-        selected,
-        status: String(job.status || 'Open')
-      }
+          id: String(job.id || job.job_id || job.title),
+          title: String(job.title || 'Untitled Job'),
+          applicants: related.length,
+          interviews,
+          selected,
+          status: String(job.status || 'open')
+        }
     })
 
     const anyFilterActive = Object.values(filters).some((v) => Boolean(v && String(v).trim()))
@@ -680,13 +681,20 @@ export default function RecruitmentDashboard() {
     if (!importPreview.length) return
     ;(async () => {
       try {
+        setIsImporting(true)
         const inserted = await CandidateService.createMany(importPreview as any)
         setRows((prev) => [...inserted, ...prev])
-        addToast(`Imported ${inserted.length} candidates`, 'success')
+        const meta = (inserted as any).__importMeta || { inserted: inserted.length, updated: 0 }
+        if (meta.inserted > 0 && meta.updated > 0) addToast(`Imported ${meta.inserted} and updated ${meta.updated} candidates`, 'success')
+        else if (meta.inserted > 0) addToast(`Imported ${meta.inserted} candidates`, 'success')
+        else if (meta.updated > 0) addToast(`Updated ${meta.updated} candidates`, 'success')
+        else addToast(`No changes applied`, 'info')
         setImportPreview([])
         setImportErrors([])
         setDrawerOpen(false)
+        setIsImporting(false)
       } catch (e) {
+        setIsImporting(false)
         addToast('Import failed', 'error')
       }
     })()

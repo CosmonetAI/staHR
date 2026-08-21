@@ -177,6 +177,7 @@ tbody tr:hover{background:var(--row-hover);cursor:pointer}
 .badge.selected{background:var(--status-selected-bg);color:var(--status-selected)}
 .badge.rejected{background:var(--status-rejected-bg);color:var(--status-rejected)}
 .badge.hold{background:var(--status-hold-bg);color:var(--status-hold)}
+.badge.missing{background:var(--status-hold-bg);color:var(--status-hold)}
 .badge.progress{background:var(--status-progress-bg);color:var(--status-progress)}
 .badge.dropped{background:var(--status-dropped-bg);color:var(--status-dropped)}
 .badge{transition:transform .12s ease, box-shadow .12s ease}
@@ -400,6 +401,12 @@ tbody tr:hover{background:var(--row-hover);cursor:pointer}
     margin-bottom:12px;   /* keeps space below */
 
     background:#fff;
+  /* Import progress animation used by import progress bar */
+  @keyframes importProgress {
+    0% { transform: translateX(-10%); }
+    50% { transform: translateX(40%); }
+    100% { transform: translateX(110%); }
+  }
 }
 .pagination-container button{
     min-width:28px;

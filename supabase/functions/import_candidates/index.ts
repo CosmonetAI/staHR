@@ -224,6 +224,58 @@ serve(async (req) => {
         }
       }
 
+      // After attempting to resolve real jobs, if candidate has a role but no resolved job,
+      // create or reuse a temporary placeholder job so candidates can be associated.
+      for (const c of candidates) {
+        try {
+          if (!c._job_id && (c.role || c.job_role)) {
+            const roleName = (c.role || c.job_role || '').toString().trim()
+            if (roleName) {
+              // Use a deterministic job_ref for temporary jobs so repeated imports reuse the same placeholder
+              const tempRef = `temp:${roleName.toLowerCase().replace(/[^a-z0-9_-]+/g, '-')}`
+              try {
+                // check if a job already exists with this tempRef
+                const existingByRef: any = await sb.from('jobs').select('id').eq('job_ref', tempRef).limit(1).maybeSingle()
+                if (!existingByRef.error && existingByRef.data) {
+                  c._job_id = existingByRef.data.id
+                } else {
+                  // also check for an existing job with the same title (case-insensitive)
+                  let existingByTitle: any = null
+                  try {
+                    existingByTitle = await sb.from('jobs').select('id').ilike('title', roleName).limit(1).maybeSingle()
+                  } catch (_e) {
+                    existingByTitle = null
+                  }
+                  if (existingByTitle && !existingByTitle.error && existingByTitle.data) {
+                    c._job_id = existingByTitle.data.id
+                  } else {
+                    // create a minimal placeholder job using admin client to bypass RLS if available
+                    const writer = sbAdmin || sb
+                    const insertPayload = {
+                      title: roleName,
+                      job_ref: tempRef,
+                      status: 'draft'
+                    }
+                    try {
+                      const { data: newJob, error: newJobErr } = await writer.from('jobs').insert([insertPayload]).select('id').limit(1).maybeSingle()
+                      if (!newJobErr && newJob) {
+                        c._job_id = newJob.id
+                      }
+                    } catch (_e) {
+                      // ignore creation errors, leave c._job_id null
+                    }
+                  }
+                }
+              } catch (e) {
+                console.warn('failed to create/resolve temp job for role', roleName, e)
+              }
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
       // Ensure applied_job_id uses resolved UUID when available; avoid inserting friendly ids like 'job-6'
       for (const c of candidates) {
         try {
@@ -370,6 +422,7 @@ serve(async (req) => {
           const email = (c.email || '').toString().trim()
           const jobId = c.applied_job_id || null
           if (email) {
+            // 1) try exact match by email + applied_job_id (existing behaviour)
             const existingRes: any = await writerCandidates.from('candidates').select('*').eq('email', email).eq('applied_job_id', jobId).limit(1).maybeSingle()
             if (!existingRes.error && existingRes.data) {
               const existingId = existingRes.data.id
@@ -382,6 +435,46 @@ serve(async (req) => {
               updated.push(upData)
               continue
             }
+
+            // 2) if not found, try matching by email + role (same role) and update that candidate
+            try {
+              const existingByEmailRole: any = await writerCandidates.from('candidates').select('*').eq('email', email).ilike('role', c.role || '').limit(1).maybeSingle()
+              if (!existingByEmailRole.error && existingByEmailRole.data) {
+                const existingId = existingByEmailRole.data.id
+                const { data: upData, error: upErr } = await writerCandidates.from('candidates').update(c).eq('id', existingId).select().single()
+                if (upErr) {
+                  console.error('candidate update error', upErr)
+                  if (up) await (sbAdmin || sb).from('uploads').update({ status: 'failed', report: { error: upErr.message } }).eq('id', up.id)
+                  return new Response(JSON.stringify({ error: 'Failed to update existing candidate', details: upErr.message || upErr }), { status: 500, headers: corsHeaders })
+                }
+                updated.push(upData)
+                continue
+              }
+            } catch (e) {
+              // ignore lookup errors and continue to next checks
+            }
+          }
+
+          // 3) If no email match, or email absent, try matching by name + role (treat same role+name as same candidate)
+          try {
+            const name = (c.name || '').toString().trim()
+            const role = (c.role || '').toString().trim()
+            if (name && role) {
+              const existingByNameRole: any = await writerCandidates.from('candidates').select('*').ilike('name', name).ilike('role', role).limit(1).maybeSingle()
+              if (!existingByNameRole.error && existingByNameRole.data) {
+                const existingId = existingByNameRole.data.id
+                const { data: upData, error: upErr } = await writerCandidates.from('candidates').update(c).eq('id', existingId).select().single()
+                if (upErr) {
+                  console.error('candidate update error', upErr)
+                  if (up) await (sbAdmin || sb).from('uploads').update({ status: 'failed', report: { error: upErr.message } }).eq('id', up.id)
+                  return new Response(JSON.stringify({ error: 'Failed to update existing candidate', details: upErr.message || upErr }), { status: 500, headers: corsHeaders })
+                }
+                updated.push(upData)
+                continue
+              }
+            }
+          } catch (e) {
+            console.error('failed to check existing candidate by name+role', e)
           }
         } catch (e) {
           console.error('failed to check existing candidate', e)

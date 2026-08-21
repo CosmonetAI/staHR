@@ -21,7 +21,8 @@ import {
   FaPhoneAlt,
   FaStickyNote,
   FaTrashAlt,
-  FaUserCheck
+  FaUserCheck,
+  FaExclamationTriangle
 } from 'react-icons/fa'
 import * as XLSX from 'xlsx'
 import { JobService } from '../services/jobService'
@@ -81,6 +82,7 @@ export default function Candidates() {
   const [form, setForm] = useState<any>({})
   const [importPreview, setImportPreview] = useState<any[]>([])
   const [importErrors, setImportErrors] = useState<any[]>([])
+  const [isImporting, setIsImporting] = useState(false)
   const [openFilter, setOpenFilter] = useState<string | null>(null)
   const [sampleMenuOpen, setSampleMenuOpen] = useState(false)
   const [jobsMap, setJobsMap] = useState<Record<string, any>>({})
@@ -423,6 +425,14 @@ const recordsPerPage = 10;
     return g
   }, [filteredRows])
 
+  const jobTitlesSet = useMemo(() => {
+    const s = new Set<string>()
+    Object.values(jobsMap || {}).forEach((j: any) => {
+      if (j && j.title) s.add(String(j.title).toLowerCase().trim())
+    })
+    return s
+  }, [jobsMap])
+
   const STAGE_ORDER = ['progress', 'hold', 'selected']
   const STATUS_LABEL: any = { selected: 'Selected', rejected: 'Rejected', hold: 'On hold', progress: 'In progress', dropped: 'Dropped out' }
   const STATUS_OPTIONS = ['progress', 'hold', 'selected', 'rejected', 'dropped']
@@ -621,7 +631,12 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
           </div>
           <button className="drawer-close" onClick={() => setShowUpload(false)}>✕</button>
         </div>
-        <div className="drawer-body">
+          <div className="drawer-body">
+            {isImporting && (
+              <div style={{ height: 6, width: '100%', background: '#eee', marginBottom: 12 }}>
+                <div style={{ height: 6, width: '30%', background: 'var(--primary)', animation: 'importProgress 1.2s linear infinite' }} />
+              </div>
+            )}
           <FileUpload onFile={async (file: File) => {
             try {
               const { rows: rowsFlat, errors } = await parseCSVFile(file)
@@ -642,6 +657,7 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
                 return r
               })
               try {
+                setIsImporting(true)
                 const inserted = await CandidateService.createMany(mapped)
                 const newRows = inserted.map((p: any) => ({
                   id: p.id,
@@ -664,10 +680,16 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
                 if (errors && errors.length) {
                   console.debug('CSV parse errors', errors)
                 }
-                addToast(`Imported ${newRows.length} candidates`, 'success')
+                // Show toast based on import metadata (inserted vs updated)
+                const meta = (inserted as any).__importMeta || { inserted: newRows.length, updated: 0 }
+                if (meta.inserted > 0 && meta.updated > 0) addToast(`Imported ${meta.inserted} and updated ${meta.updated} candidates`, 'success')
+                else if (meta.inserted > 0) addToast(`Imported ${meta.inserted} candidates`, 'success')
+                else if (meta.updated > 0) addToast(`Updated ${meta.updated} candidates`, 'success')
+                else addToast(`No changes applied`, 'info')
               } catch (err) {
                 addToast('Import failed', 'error')
               }
+              setIsImporting(false)
               setShowUpload(false)
             } catch (e) {
               addToast('Import failed', 'error')
@@ -756,8 +778,27 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
                               setSelectedIds(prev=> e.target.checked ? [...new Set([...prev,c.id])] : prev.filter(x=>x!==c.id))
                             }} /></td>
                         <td>
-                          <div className="cand-name">{c.name}</div>
-                          <div className="cand-sub">{c.email}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div>
+                              <div className="cand-name">{c.name}</div>
+                              <div className="cand-sub">{c.email}</div>
+                            </div>
+                            {(() => {
+                              const roleName = String(c.role || c.job_role || c.applied_job_title || '').trim()
+                              const missingRole = roleName && !jobTitlesSet.has(roleName.toLowerCase())
+                              const missingJobId = !String(c.applied_job_id || c.job_id || c.job_ref || '').trim()
+                              const msgs: string[] = []
+                              if (missingRole) msgs.push(`Referenced job '${roleName}' not found`)
+                              if (missingJobId) msgs.push('No job id assigned')
+                              if (!msgs.length) return null
+                              const color = missingRole ? '#b91c1c' : '#b45309'
+                              return (
+                                <span title={msgs.join('\n')} style={{ display: 'inline-flex', alignItems: 'center' }}>
+                                  <FaExclamationTriangle style={{ color }} />
+                                </span>
+                              )
+                            })()}
+                          </div>
                         </td>
                         <td className="experience-col">{formatExperience(c.exp)}</td>
                         <td className="mono">
@@ -823,7 +864,18 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
                                     <div className="candidate-profile-name">{display(c.name)}</div>
                                     
                                        <div style={{ marginTop: 6, display: 'flex', gap: 16, alignItems: 'center' }}>
-                                         <div style={{ fontSize: 13 }}><strong>Job Role:</strong> <span style={{ marginLeft: 6 }}>{display(c.applied_job_title || c.role || '-')}</span></div>
+                                                 <div style={{ fontSize: 13 }}><strong>Job Role:</strong> <span style={{ marginLeft: 6 }}>{display(c.applied_job_title || c.role || '-')}</span></div>
+                                                 {(() => {
+                                                   const roleName = String(c.applied_job_title || c.role || '').trim()
+                                                   const missing = roleName && !jobTitlesSet.has(roleName.toLowerCase())
+                                                   const missingJobId = !String(c.applied_job_id || c.job_id || c.job_ref || '').trim()
+                                                   const msgs: string[] = []
+                                                   if (missing) msgs.push(`Referenced job '${roleName}' not found`)
+                                                   if (missingJobId) msgs.push('Job id not assigned')
+                                                   if (!msgs.length) return null
+                                                   const color = missing ? '#b91c1c' : '#b45309'
+                                                   return <div style={{ marginLeft: 12 }}><span title={msgs.join('\n')} style={{ display: 'inline-flex', alignItems: 'center', color }}><FaExclamationTriangle /> <span style={{ marginLeft: 6 }}>{msgs.length === 1 ? msgs[0] : 'Multiple issues'}</span></span></div>
+                                                 })()}
                                          <div style={{ fontSize: 13 }}>
                                            <strong>Job ID:</strong>
                                            <span style={{ marginLeft: 6 }}>
@@ -1147,13 +1199,19 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
           importParsedRows={async () => {
             if (!importPreview.length) return
             try {
+              setIsImporting(true)
               const inserted = await CandidateService.createMany(importPreview)
               const newRows = inserted.map((p: any) => ({ id: p.id, name: p.name, email: p.email, phone: p.phone, exp: p.experience ? String(p.experience) : '', cctc: p.current_ctc ? String(p.current_ctc) : '', ectc: p.expected_ctc ? String(p.expected_ctc) : '', location: p.current_location || '', np: p.notice_period || '', selstatus: p.selstatus || 'progress', role: p.job_role || p.role || '', linkedin: p.linkedin || '', client_feedback: p.client_feedback || '', created_at: p.created_at, updated_at: p.updated_at }))
               setRows(prev => [...newRows, ...prev])
-              addToast(`Imported ${newRows.length} candidates`, 'success')
+              const meta = (inserted as any).__importMeta || { inserted: newRows.length, updated: 0 }
+              if (meta.inserted > 0 && meta.updated > 0) addToast(`Imported ${meta.inserted} and updated ${meta.updated} candidates`, 'success')
+              else if (meta.inserted > 0) addToast(`Imported ${meta.inserted} candidates`, 'success')
+              else if (meta.updated > 0) addToast(`Updated ${meta.updated} candidates`, 'success')
+              else addToast(`No changes applied`, 'info')
               setImportPreview([])
               setImportErrors([])
               setDrawerOpen(false)
+              setIsImporting(false)
             } catch (e) { addToast('Import failed', 'error') }
           }}
           onClearImport={() => { setImportPreview([]); setImportErrors([]) }}

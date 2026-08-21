@@ -50,7 +50,7 @@ export type Job = {
   openings?: number
   location?: string
   posted?: string
-  status?: 'Open' | 'Closed' | string
+  status?: 'draft' | 'open' | 'closed' | string
   desc?: string
   client_id?: string
   client_name?: string
