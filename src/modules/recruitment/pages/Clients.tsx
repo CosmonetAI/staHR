@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { FaThLarge, FaList } from 'react-icons/fa'
+import { FaThLarge, FaList, FaPen, FaTrashAlt } from 'react-icons/fa'
 import { useAuth } from '../../../hooks/useAuth'
 import ClientService from '../services/clientService'
 import { useToast } from '../../../components/ToastProvider'
@@ -194,8 +194,10 @@ async function save() {
                   <td style={{ padding: '10px 12px' }}>{c.email || ''}</td>
                   <td style={{ padding: '10px 12px' }}>{c.phone || ''}</td>
                   <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                    <button className="btn btn-ghost" onClick={() => setEditing({ ...c })}>Edit</button>
-                    <button className="btn btn-danger" onClick={() => remove(c)} style={{ marginLeft: 8 }}>Delete</button>
+                    <div style={{ display: 'inline-flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end' }}>
+                      <button className="icon-btn" title="Edit" onClick={() => setEditing({ ...c })}><FaPen /></button>
+                      <button className="icon-btn del" title="Delete" onClick={() => remove(c)}><FaTrashAlt /></button>
+                    </div>
                   </td>
                 </tr>
               ))}
