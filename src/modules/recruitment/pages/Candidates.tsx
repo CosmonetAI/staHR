@@ -164,15 +164,17 @@ const recordsPerPage = 10;
           }
         }
         setEditingId(null)
-        setForm({ role: title || '', name: '', date: new Date().toISOString().slice(0, 10), exp: '', cctc: '', ectc: '', email: '', phone: '', linkedin: '', location: '', np: '', availability: '', intstatus: '', selstatus: 'progress', remarks: '', f2f: '', client_feedback: '', applied_job_id: resolvedJobId || jobRef || '', job_id: resolvedJobId || jobRef || '' })
+        setForm({ role: title || '', name: '', date: new Date().toISOString().slice(0, 10), exp: '', cctc: '', ectc: '', email: '', phone: '', linkedin: '', location: '', np: '', availability: '', intstatus: '', selstatus: 'Pre-screening in-progress', remarks: '', f2f: '', client_feedback: '', applied_job_id: resolvedJobId || jobRef || '', job_id: resolvedJobId || jobRef || '' })
         setDrawerOpen(true)
       })()
     }
   }, [location.search])
 
   function normalizedStatus(status: string) {
-    const s = String(status || 'progress').toLowerCase()
-    if (s.includes('select')) return 'selected'
+    const raw = String(status || '').trim()
+    if (!raw) return ''
+    const s = raw.toLowerCase()
+    if (s.includes('shortlist') || s.includes('select') || s.includes('offer')) return 'selected'
     if (s.includes('reject')) return 'rejected'
     if (s.includes('hold')) return 'hold'
     if (s.includes('drop')) return 'dropped'
@@ -266,9 +268,8 @@ const recordsPerPage = 10;
       const cols = CANDIDATE_HEADERS
       const sampleRows = [
         {
-          job_id: 'JOB-001', name: 'Alice Doe', email: 'alice@example.com', phone: '9876543210', experience: '3', current_company: '', current_location: 'Bengaluru', preferred_location: '', skills: '', notice_period: '30', current_ctc: '8', expected_ctc: '12', date: new Date().toISOString().slice(0,10), role: 'Frontend Engineer', selstatus: 'progress', intstatus: 'Phone screen', availability: '', remarks: 'Strong React skills', linkedin: 'https://linkedin.com/in/alice', interview_slot: '', confirmed_availability: '', f2f: ''
+          job_id: 'JOB-001', name: 'Alice Doe', email: 'alice@example.com', phone: '9876543210', experience: '3', current_company: '', current_location: 'Bengaluru', preferred_location: '', skills: '', notice_period: '30', current_ctc: '8', expected_ctc: '12', date: new Date().toISOString().slice(0,10), role: 'Frontend Engineer', selstatus: 'Pre-screening in-progress', intstatus: 'Phone screen', availability: '', remarks: 'Strong React skills', linkedin: 'https://linkedin.com/in/alice', interview_slot: '', confirmed_availability: '', f2f: ''
         }
-       
       ]
 
       const esc = (v:any) => {
@@ -297,8 +298,8 @@ const recordsPerPage = 10;
   function downloadSampleExcel() {
     try {
       const sampleRows = [
-        { job_id: 'JOB-001', name: 'Alice Doe', email: 'alice@example.com', phone: '9876543210', experience: 3, current_company: '', current_location: 'Bengaluru', preferred_location: '', skills: '', notice_period: '30', current_ctc: 8, expected_ctc: 12, date: new Date().toISOString().slice(0,10), role: 'Frontend Engineer', selstatus: 'progress', intstatus: 'Phone screen', availability: '', remarks: 'Strong React skills', linkedin: 'https://linkedin.com/in/alice', interview_slot: '', confirmed_availability: '', f2f: '' },
-        { job_id: 'JOB-002', name: 'Bob Kumar', email: 'bob@example.com', phone: '9123456780', experience: 5, current_company: '', current_location: 'Mumbai', preferred_location: '', skills: '', notice_period: '15', current_ctc: 15, expected_ctc: 20, date: new Date().toISOString().slice(0,10), role: 'Backend Engineer', selstatus: 'progress', intstatus: 'Interview round 1', availability: '', remarks: '', linkedin: '', interview_slot: '', confirmed_availability: '', f2f: '' }
+        { job_id: 'JOB-001', name: 'Alice Doe', email: 'alice@example.com', phone: '9876543210', experience: 3, current_company: '', current_location: 'Bengaluru', preferred_location: '', skills: '', notice_period: '30', current_ctc: 8, expected_ctc: 12, date: new Date().toISOString().slice(0,10), role: 'Frontend Engineer', selstatus: 'Pre-screening in-progress', intstatus: 'Phone screen', availability: '', remarks: 'Strong React skills', linkedin: 'https://linkedin.com/in/alice', interview_slot: '', confirmed_availability: '', f2f: '' },
+        { job_id: 'JOB-002', name: 'Bob Kumar', email: 'bob@example.com', phone: '9123456780', experience: 5, current_company: '', current_location: 'Mumbai', preferred_location: '', skills: '', notice_period: '15', current_ctc: 15, expected_ctc: 20, date: new Date().toISOString().slice(0,10), role: 'Backend Engineer', selstatus: 'Pre-screening in-progress', intstatus: 'Interview round 1', availability: '', remarks: '', linkedin: '', interview_slot: '', confirmed_availability: '', f2f: '' }
       ]
       const aoa = []
       aoa.push(CANDIDATE_HEADER_LABELS)
@@ -387,7 +388,7 @@ const recordsPerPage = 10;
         return true
       })
     }
-    if (statusFilters.length) tmp = tmp.filter((d: any) => statusFilters.includes(normalizedStatus(d.selstatus)))
+    if (statusFilters.length) tmp = tmp.filter((d: any) => statusFilters.includes(getFullStatusLabel(d.selstatus)))
     // Date range filter: candidate 'date' field is expected in yyyy-mm-dd or ISO format
     if (dateFrom || dateTo) {
       tmp = tmp.filter((d: any) => {
@@ -433,11 +434,57 @@ const recordsPerPage = 10;
     return s
   }, [jobsMap])
 
-  const STAGE_ORDER = ['progress', 'hold', 'selected']
-  const STATUS_LABEL: any = { selected: 'Selected', rejected: 'Rejected', hold: 'On hold', progress: 'In progress', dropped: 'Dropped out' }
-  const STATUS_OPTIONS = ['progress', 'hold', 'selected', 'rejected', 'dropped']
+  const STAGE_ORDER = ['Pre-screening in-progress', 'Pre-screening done and submitted for evaluation', 'Evaluation in-progress', 'Evaluation done and submitted for sharing with client', 'Profile shared with client', 'Scheduled for L1 discussion', 'Scheduled for L2 discussion', 'Scheduled for L3 discussion', 'Candidate shortlisted', 'On hold', 'Rejected', 'Dropped Out']
+  const STATUS_OPTIONS = [
+    'Pre-screening in-progress',
+    'Pre-screening done and submitted for evaluation',
+    'Evaluation in-progress',
+    'Evaluation done and submitted for sharing with client',
+    'Profile shared with client',
+    'Scheduled for L1 discussion',
+    'Scheduled for L2 discussion',
+    'Scheduled for L3 discussion',
+    'Candidate shortlisted',
+    'On hold',
+    'Rejected',
+    'Dropped Out'
+  ]
   const display = (value: any) => String(value ?? '').trim() || '-'
-  const statusLabel = (status: string) => STATUS_LABEL[normalizedStatus(status)] || display(status)
+
+  function getFullStatusLabel(status: any) {
+    const raw = String(status || '').trim()
+    if (!raw) return ''
+    const s = raw.toLowerCase()
+    // If status already matches one of the descriptive enum labels, preserve it exactly
+    const NEW_LABELS = [
+      'Pre-screening in-progress',
+      'Pre-screening done and submitted for evaluation',
+      'Evaluation in-progress',
+      'Evaluation done and submitted for sharing with client',
+      'Profile shared with client',
+      'Scheduled for L1 discussion',
+      'Scheduled for L2 discussion',
+      'Scheduled for L3 discussion',
+      'Candidate shortlisted',
+      'On hold',
+      'Rejected',
+      'Dropped Out'
+    ]
+    for (const lbl of NEW_LABELS) {
+      if (lbl.toLowerCase() === s) return lbl
+    }
+
+    // Map legacy short tokens to descriptive enum labels
+    if (s === 'progress' || s === 'in-progress' || s.includes('process') || s.includes('pending') || s.includes('round')) return 'Pre-screening in-progress'
+    if (s === 'hold' || s.includes('hold')) return 'On hold'
+    if (s === 'selected' || s.includes('select') || s.includes('offer')) return 'Candidate shortlisted'
+    if (s === 'rejected' || s.includes('reject')) return 'Rejected'
+    if (s === 'dropped' || s.includes('drop')) return 'Dropped Out'
+
+    // Fallback: return the raw value
+    return raw
+  }
+  const statusLabel = (status: string) => getFullStatusLabel(status)
   const toggleFilterValue = (values: string[], value: string, setter: (next: string[]) => void) => {
     setter(values.includes(value) ? values.filter(v => v !== value) : [...values, value])
   }
@@ -563,7 +610,7 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
             {STATUS_OPTIONS.map(k => (
               <label key={k} className="filter-check">
                 <input type="checkbox" checked={statusFilters.includes(k)} onChange={() => toggleFilterValue(statusFilters, k, setStatusFilters)} />
-                <span>{STATUS_LABEL[k]}</span>
+                <span>{k}</span>
               </label>
             ))}
           </div>}
@@ -669,7 +716,7 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
                   ectc: p.expected_ctc ? String(p.expected_ctc) : '',
                   location: p.current_location || '',
                   np: p.notice_period || '',
-                  selstatus: p.selstatus || 'progress',
+                  selstatus: p.selstatus || 'Pre-screening in-progress',
                   role: p.job_role || p.role || '',
                   linkedin: p.linkedin || '',
                   created_at: p.created_at,
@@ -732,7 +779,7 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
                   <div style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
                     <button className="btn btn-primary" onClick={() => {
                       setEditingId(null)
-                      setForm({ role: '', name: '', date: new Date().toISOString().slice(0, 10), exp: '', cctc: '', ectc: '', email: '', phone: '', linkedin: '', location: '', np: '', availability: '', intstatus: '', selstatus: 'progress', remarks: '', f2f: '', client_feedback: '' })
+                      setForm({ role: '', name: '', date: new Date().toISOString().slice(0, 10), exp: '', cctc: '', ectc: '', email: '', phone: '', linkedin: '', location: '', np: '', availability: '', intstatus: '', selstatus: 'Pre-screening in-progress', remarks: '', f2f: '', client_feedback: '' })
                       setDrawerOpen(true)
                     }}>+ Add Candidate</button>
                     <button type="button" className={`icon-btn ${viewMode === 'row' ? 'active' : ''}`} onClick={() => setViewMode('row')} title="List view"><FaList /></button>
@@ -811,12 +858,12 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
                         <td className="notice-col">{formatNoticePeriod(c.np)}</td>
                         <td className="status-cell" onClick={(e)=>e.stopPropagation()}>
                           <div className="status-cell-inner">
-                            <span className={`badge ${normalizedStatus(c.selstatus)}`} style={{ cursor: 'pointer' }} onClick={()=>{ setExpandedId(null); setStatusMenuFor(statusMenuFor === c.id ? null : c.id) }} title="Click to change status">{statusLabel(c.selstatus)}</span>
+                            <span className={`badge ${normalizedStatus(c.selstatus)}`} title={String(statusLabel(c.selstatus))}>{statusLabel(c.selstatus)}</span>
                           </div>
                           {statusMenuFor === c.id && (
                             <div className="status-menu">
                               {STATUS_OPTIONS.map((k)=> (
-                                <div key={k} className={`status-menu-item ${normalizedStatus(c.selstatus) === k ? 'active' : ''}`} onClick={()=>{
+                                <div key={k} className={`status-menu-item ${getFullStatusLabel(c.selstatus) === k ? 'active' : ''}`} onClick={()=>{
                                   const prev = c.selstatus
                                   setRows(prevRows => {
                                     const updatedRow = { ...c, selstatus: k, updated_at: new Date().toISOString() }
@@ -825,7 +872,7 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
                                   setLastChange({id:c.id, prev})
                                   addToast('Status updated — Undo?', 'info', 3000)
                                   setStatusMenuFor(null)
-                                }}>{STATUS_LABEL[k]}</div>
+                                }}>{k}</div>
                               ))}
                             </div>
                           )}
@@ -891,7 +938,7 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
                                        </div>
                                   </div>
                                 </div>
-                                <span className={`badge ${normalizedStatus(c.selstatus)}`}>{statusLabel(c.selstatus)}</span>
+                                <span className={`badge ${normalizedStatus(c.selstatus)}`} title={String(statusLabel(c.selstatus))}>{statusLabel(c.selstatus)}</span>
                               </div>
 
                               <div className="candidate-profile-grid">
@@ -1095,7 +1142,7 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
                       <div style={{ fontSize: 13, marginTop: 6 }}>{c.applied_job_title || c.role || ''}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div className={`badge ${normalizedStatus(c.selstatus)}`}>{statusLabel(c.selstatus)}</div>
+                                <div className={`badge ${normalizedStatus(c.selstatus)}`} title={String(statusLabel(c.selstatus))}>{statusLabel(c.selstatus)}</div>
                       <div style={{ marginTop: 8, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                         <button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); setEditingId(String(c.id)); setForm({ ...c }); setDrawerOpen(true) }}><FaPen /></button>
                         <button className="btn btn-danger" onClick={async (e) => { e.stopPropagation(); if (!confirm('Delete this candidate?')) return; try { const ok = await CandidateService.remove(String(c.id)); if (ok) { setRows(prev=>prev.filter(x=>x.id!==c.id)); addToast('Candidate deleted', 'success') } else addToast('Delete failed', 'error') } catch (err: any) { addToast('Delete failed: ' + (err?.message || String(err)), 'error') } }}><FaTrashAlt /></button>
@@ -1186,7 +1233,7 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
                   intstatus: p.intstatus || '',
                   interview_slot: coerce(p.interview_slot),
                   confirmed_availability: coerce(p.confirmed_availability),
-                  selstatus: p.selstatus || 'progress',
+                  selstatus: p.selstatus || 'Pre-screening in-progress',
                   remarks: p.remarks || '',
                   f2f: coerce(p.f2f)
                 })
@@ -1201,7 +1248,7 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
             try {
               setIsImporting(true)
               const inserted = await CandidateService.createMany(importPreview)
-              const newRows = inserted.map((p: any) => ({ id: p.id, name: p.name, email: p.email, phone: p.phone, exp: p.experience ? String(p.experience) : '', cctc: p.current_ctc ? String(p.current_ctc) : '', ectc: p.expected_ctc ? String(p.expected_ctc) : '', location: p.current_location || '', np: p.notice_period || '', selstatus: p.selstatus || 'progress', role: p.job_role || p.role || '', linkedin: p.linkedin || '', client_feedback: p.client_feedback || '', created_at: p.created_at, updated_at: p.updated_at }))
+              const newRows = inserted.map((p: any) => ({ id: p.id, name: p.name, email: p.email, phone: p.phone, exp: p.experience ? String(p.experience) : '', cctc: p.current_ctc ? String(p.current_ctc) : '', ectc: p.expected_ctc ? String(p.expected_ctc) : '', location: p.current_location || '', np: p.notice_period || '', selstatus: p.selstatus || 'Pre-screening in-progress', role: p.job_role || p.role || '', linkedin: p.linkedin || '', client_feedback: p.client_feedback || '', created_at: p.created_at, updated_at: p.updated_at }))
               setRows(prev => [...newRows, ...prev])
               const meta = (inserted as any).__importMeta || { inserted: newRows.length, updated: 0 }
               if (meta.inserted > 0 && meta.updated > 0) addToast(`Imported ${meta.inserted} and updated ${meta.updated} candidates`, 'success')

@@ -264,12 +264,20 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
 
           <div className="field">
             <label>Selection status</label>
-            <select value={form.selstatus || 'progress'} onChange={(e) => setForm({ ...form, selstatus: e.target.value })}>
-              <option value="progress">In progress</option>
-              <option value="hold">On hold</option>
-              <option value="selected">Selected</option>
-              <option value="rejected">Rejected</option>
-              <option value="dropped">Dropped out</option>
+            <select value={form.selstatus || ''} onChange={(e) => setForm({ ...form, selstatus: e.target.value })}>
+              <option value="">— select —</option>
+              <option value="Pre-screening in-progress">Pre-screening in-progress</option>
+              <option value="Pre-screening done and submitted for evaluation">Pre-screening done and submitted for evaluation</option>
+              <option value="Evaluation in-progress">Evaluation in-progress</option>
+              <option value="Evaluation done and submitted for sharing with client">Evaluation done and submitted for sharing with client</option>
+              <option value="Profile shared with client">Profile shared with client</option>
+              <option value="Scheduled for L1 discussion">Scheduled for L1 discussion</option>
+              <option value="Scheduled for L2 discussion">Scheduled for L2 discussion</option>
+              <option value="Scheduled for L3 discussion">Scheduled for L3 discussion</option>
+              <option value="Candidate shortlisted">Candidate shortlisted</option>
+              <option value="On hold">On hold</option>
+              <option value="Rejected">Rejected</option>
+              <option value="Dropped Out">Dropped Out</option>
             </select>
           </div>
         </div>
