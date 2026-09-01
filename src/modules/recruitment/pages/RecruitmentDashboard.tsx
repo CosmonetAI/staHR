@@ -241,7 +241,7 @@ export default function RecruitmentDashboard() {
     const openAdd = params.get('openAdd')
     if (openAdd === 'true') {
       setEditingId(null)
-      setForm({
+        setForm({
         role: '',
         name: '',
         date: new Date().toISOString().slice(0, 10),
@@ -255,7 +255,7 @@ export default function RecruitmentDashboard() {
         np: '',
         availability: '',
         intstatus: '',
-        selstatus: 'progress',
+          selstatus: 'Pre-screening in-progress',
         remarks: '',
         f2f: ''
       })

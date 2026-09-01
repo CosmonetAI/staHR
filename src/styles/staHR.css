@@ -174,6 +174,19 @@ tbody tr:hover{background:var(--row-hover);cursor:pointer}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--line-strong);transition:transform .18s ease, background .18s ease}
 .dot.on{background:var(--primary);transform:scale(1.12)}
 .badge{display:inline-block;font-size:11px;font-weight:600;padding:5px 12px;border-radius:20px;white-space:nowrap;line-height:1.2}
+
+/* Truncate long badge text and show full value on hover via title attribute */
+.status-cell .badge,
+.candidate-profile-head .badge,
+.candidates-card .badge,
+.card .badge,
+.status-menu-item .badge {
+  max-width:160px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  display:inline-block;
+}
 .badge.selected{background:var(--status-selected-bg);color:var(--status-selected)}
 .badge.rejected{background:var(--status-rejected-bg);color:var(--status-rejected)}
 .badge.hold{background:var(--status-hold-bg);color:var(--status-hold)}

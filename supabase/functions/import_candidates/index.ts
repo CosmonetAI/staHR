@@ -25,14 +25,33 @@ if (SUPABASE_URL && SUPABASE_SERVICE_ROLE) {
 }
 
 function normalizeSelectionStatus(value: any) {
-  const s = String(value || '').trim().toLowerCase()
-  if (!s) return 'progress'
-  if (s.includes('reject')) return 'rejected'
-  if (s.includes('select') || s.includes('offer')) return 'selected'
-  if (s.includes('hold')) return 'hold'
-  if (s.includes('drop')) return 'dropped'
-  if (s.includes('progress') || s.includes('process') || s.includes('pending') || s.includes('round') || s.includes('interview')) return 'progress'
-  return 'progress'
+  const raw = String(value || '').trim()
+  const s = raw.toLowerCase()
+  // If it's already one of the new labels (case-insensitive), return the label as-is
+  const NEW_LABELS = [
+    'Pre-screening in-progress',
+    'Pre-screening done and submitted for evaluation',
+    'Evaluation in-progress',
+    'Evaluation done and submitted for sharing with client',
+    'Profile shared with client',
+    'Scheduled for L1 discussion',
+    'Scheduled for L2 discussion',
+    'Scheduled for L3 discussion',
+    'Candidate shortlisted',
+    'On hold',
+    'Rejected',
+    'Dropped Out'
+  ]
+  for (const lbl of NEW_LABELS) if (lbl.toLowerCase() === s) return lbl
+
+  if (!s) return 'Pre-screening in-progress'
+  if (s === 'progress' || s === 'in-progress' || s.includes('progress') || s.includes('process') || s.includes('pending')) return 'Pre-screening in-progress'
+  if (s === 'hold' || s.includes('hold')) return 'On hold'
+  if (s === 'selected' || s.includes('select') || s.includes('offer')) return 'Candidate shortlisted'
+  if (s === 'rejected' || s.includes('reject')) return 'Rejected'
+  if (s === 'dropped' || s.includes('drop')) return 'Dropped Out'
+  if (s.includes('no') && s.includes('show')) return 'Dropped Out'
+  return 'Pre-screening in-progress'
 }
 
 serve(async (req) => {

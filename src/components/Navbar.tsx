@@ -24,7 +24,6 @@ export default function Navbar() {
         {open && (
           <div className="profile-menu" role="menu">
             <div className="profile-item" role="menuitem">{user?.email}</div>
-            <div className="profile-item" role="menuitem" onClick={() => { setOpen(false); /* placeholder for settings */ }}>Settings</div>
             <div className="profile-item" role="menuitem" onClick={() => { signOut() }}>Logout</div>
           </div>
         )}
