@@ -4,14 +4,39 @@ import { Candidate } from '../../../types'
 const EDGE_IMPORT_URL = import.meta.env.VITE_EDGE_IMPORT_URL || ''
 
 function normalizeSelectionStatus(value: any) {
-  const s = String(value || '').trim().toLowerCase()
-  if (!s) return 'progress'
-  if (s.includes('reject')) return 'rejected'
-  if (s.includes('select') || s.includes('offer')) return 'selected'
-  if (s.includes('hold')) return 'hold'
-  if (s.includes('drop')) return 'dropped'
-  if (s.includes('progress') || s.includes('process') || s.includes('pending') || s.includes('round') || s.includes('interview')) return 'progress'
-  return 'progress'
+  const raw = String(value || '').trim()
+  const s = raw.toLowerCase()
+  // If the incoming value already matches one of the new enum labels (case-insensitive), preserve its original casing
+  const NEW_LABELS = [
+    'Pre-screening in-progress',
+    'Pre-screening done and submitted for evaluation',
+    'Evaluation in-progress',
+    'Evaluation done and submitted for sharing with client',
+    'Profile shared with client',
+    'Scheduled for L1 discussion',
+    'Scheduled for L2 discussion',
+    'Scheduled for L3 discussion',
+    'Candidate shortlisted',
+    'On hold',
+    'Rejected',
+    'Dropped Out'
+  ]
+  for (const lbl of NEW_LABELS) {
+    if (lbl.toLowerCase() === s) return lbl
+  }
+
+  // Map legacy short tokens to the new descriptive enum labels
+  if (!s) return 'Pre-screening in-progress'
+  if (s === 'progress' || s === 'in-progress' || s.includes('progress') || s.includes('process') || s.includes('pending')) return 'Pre-screening in-progress'
+  if (s === 'hold' || s.includes('hold')) return 'On hold'
+  if (s === 'selected' || s.includes('select') || s.includes('offer')) return 'Candidate shortlisted'
+  if (s === 'rejected' || s.includes('reject')) return 'Rejected'
+  if (s === 'dropped' || s.includes('drop')) return 'Dropped Out'
+  // Handle common synonyms (e.g. 'no-show' or 'no show')
+  if (s.includes('no') && s.includes('show')) return 'Dropped Out'
+
+  // Unknown/custom values are normalized to a safe default enum value to avoid DB errors
+  return 'Pre-screening in-progress'
 }
 
 async function postEdge(path: string, body: any, method = 'POST') {
