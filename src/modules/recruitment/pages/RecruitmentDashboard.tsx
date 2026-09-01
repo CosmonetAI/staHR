@@ -96,6 +96,33 @@ function normalizedStatus(raw: any): StatusKey {
   return 'progress'
 }
 
+function getFullStatusLabel(status: any) {
+  const raw = String(status || '').trim()
+  if (!raw) return ''
+  const s = raw.toLowerCase()
+  const NEW_LABELS = [
+    'Pre-screening in-progress',
+    'Pre-screening done and submitted for evaluation',
+    'Evaluation in-progress',
+    'Evaluation done and submitted for sharing with client',
+    'Profile shared with client',
+    'Scheduled for L1 discussion',
+    'Scheduled for L2 discussion',
+    'Scheduled for L3 discussion',
+    'Candidate shortlisted',
+    'On hold',
+    'Rejected',
+    'Dropped Out'
+  ]
+  for (const lbl of NEW_LABELS) if (lbl.toLowerCase() === s) return lbl
+  if (s === 'progress' || s === 'in-progress' || s.includes('process') || s.includes('pending') || s.includes('round')) return 'Pre-screening in-progress'
+  if (s === 'hold' || s.includes('hold')) return 'On hold'
+  if (s === 'selected' || s.includes('select') || s.includes('offer')) return 'Candidate shortlisted'
+  if (s === 'rejected' || s.includes('reject')) return 'Rejected'
+  if (s === 'dropped' || s.includes('drop')) return 'Dropped Out'
+  return raw
+}
+
 function toEpoch(value: any): number | null {
   if (!value) return null
   if (typeof value === 'number') return Number.isFinite(value) ? value : null
@@ -295,6 +322,7 @@ export default function RecruitmentDashboard() {
       const recruiter = getRecruiter(row)
       const source = inferSource(row)
       const status = normalizedStatus(row.selstatus)
+      const statusFull = getFullStatusLabel(row.selstatus)
       const years = parseYears(row.exp ?? row.experience)
       const interviewTs = [row.confirmed_availability, row.interview_slot, row.f2f]
         .map((v) => toEpoch(v))
@@ -312,6 +340,7 @@ export default function RecruitmentDashboard() {
         _recruiter: recruiter,
         _source: source,
         _status: status,
+        _status_full: statusFull,
         _years: years,
         _interviewTs: interviewTs,
         _submittedDate: submittedDate
@@ -348,7 +377,7 @@ export default function RecruitmentDashboard() {
         if (!rowSkillMatch && !jobSkillMatch) return false
       }
       if (filters.location && row._location !== filters.location) return false
-      if (filters.status && row._status !== filters.status) return false
+      if (filters.status && row._status_full !== filters.status) return false
       if (filters.stage && row._stage !== filters.stage) return false
       if (filters.experience) {
         const bucket = EXPERIENCE_BUCKETS.find((b) => b.key === filters.experience)
@@ -796,13 +825,23 @@ export default function RecruitmentDashboard() {
 
           <select value={filters.status} onChange={(e) => handleFilterChange('status', e.target.value)}>
             <option value="">All Statuses</option>
-            {Object.entries(STATUS_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            {[
+              'Pre-screening in-progress',
+              'Pre-screening done and submitted for evaluation',
+              'Evaluation in-progress',
+              'Evaluation done and submitted for sharing with client',
+              'Profile shared with client',
+              'Scheduled for L1 discussion',
+              'Scheduled for L2 discussion',
+              'Scheduled for L3 discussion',
+              'Candidate shortlisted',
+              'On hold',
+              'Rejected',
+              'Dropped Out'
+            ].map((lbl) => <option key={lbl} value={lbl}>{lbl}</option>)}
           </select>
 
-          <select value={filters.stage} onChange={(e) => handleFilterChange('stage', e.target.value)}>
-            <option value="">All Stages</option>
-            {STAGE_ORDER.map((stage) => <option key={stage} value={stage}>{STAGE_LABEL[stage]}</option>)}
-          </select>
+          
 
           <button className="btn btn-ghost" onClick={clearFilters}>Clear Filters</button>
         </div>
@@ -813,15 +852,15 @@ export default function RecruitmentDashboard() {
           <div className="kpi-left"><div className="num">{kpis.total.value}</div><div className="label">Total Candidates</div></div>
           <div className="kpi-right">{kpis.total.trend ? `↗ ${kpis.total.trend}` : '📥'}</div>
         </button>
-        <button className="stat-card kpi selected" onClick={() => handleFilterChange('status', 'selected')} title="Filter selected candidates">
+        <button className="stat-card kpi selected" onClick={() => handleFilterChange('status', 'Candidate shortlisted')} title="Filter selected candidates">
           <div className="kpi-left"><div className="num">{kpis.selected.value}</div><div className="label">Selected</div></div>
           <div className="kpi-right">✅</div>
         </button>
-        <button className="stat-card kpi progress" onClick={() => handleFilterChange('status', 'progress')} title="Filter pipeline candidates">
+        <button className="stat-card kpi progress" onClick={() => handleFilterChange('status', 'Pre-screening in-progress')} title="Filter pipeline candidates">
           <div className="kpi-left"><div className="num">{kpis.pipeline.value}</div><div className="label">In Pipeline</div></div>
           <div className="kpi-right">🔄</div>
         </button>
-        <button className="stat-card kpi rejected" onClick={() => handleFilterChange('status', 'rejected')} title="Filter closed out candidates">
+        <button className="stat-card kpi rejected" onClick={() => handleFilterChange('status', 'Rejected')} title="Filter closed out candidates">
           <div className="kpi-left"><div className="num">{kpis.closedOut.value}</div><div className="label">Closed Out</div></div>
           <div className="kpi-right">❌</div>
         </button>
@@ -878,8 +917,16 @@ export default function RecruitmentDashboard() {
                   maintainAspectRatio: false,
                   onClick: (_evt: any, els: any[]) => {
                     if (!els?.length) return
-                    const status = Object.keys(STATUS_LABEL)[els[0].index]
-                    handleFilterChange('status', String(status || ''))
+                    const keys = Object.keys(STATUS_LABEL)
+                    const key = keys[els[0].index]
+                    const MAP_FULL: Record<string,string> = {
+                      selected: 'Candidate shortlisted',
+                      progress: 'Pre-screening in-progress',
+                      hold: 'On hold',
+                      rejected: 'Rejected',
+                      dropped: 'Dropped Out'
+                    }
+                    handleFilterChange('status', String(MAP_FULL[key] || ''))
                   }
                 }}
               />
