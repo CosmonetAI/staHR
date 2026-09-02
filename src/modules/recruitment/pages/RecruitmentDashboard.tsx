@@ -499,9 +499,10 @@ export default function RecruitmentDashboard() {
 
     const sourceDataAvailable = sources.length > 0
 
-    const conversion = STAGE_ORDER.map((stage, idx) => {
-      const count = stage === 'applications' ? total : stageCounts[stage] || 0
-      const prev = idx === 0 ? count : (stage === 'applications' ? total : stageCounts[STAGE_ORDER[idx - 1]] || 0)
+    // Exclude the top-level 'applications' stage from the recruitment funnel visualization
+    const conversion = STAGE_ORDER.filter((s) => s !== 'applications').map((stage, idx) => {
+      const count = stageCounts[stage] || 0
+      const prev = idx === 0 ? count : (stageCounts[STAGE_ORDER.filter((s) => s !== 'applications')[idx - 1]] || 0)
       const rate = idx === 0 || prev === 0 ? null : Math.round((count / prev) * 100)
       return { stage, count, rate }
     })
@@ -969,7 +970,7 @@ export default function RecruitmentDashboard() {
         <div className="dashboard-grid-v2">
           <div className="chart-card">
             <div className="card-header">
-              <div><strong>Recruitment Funnel</strong><div className="card-sub">Applications to selected conversion</div></div>
+              <div><strong>Recruitment Funnel</strong><div className="card-sub">Pipeline conversion across stages</div></div>
             </div>
             <div style={{ marginTop: 12, height: 240, cursor: 'pointer' }}>
               <Bar
@@ -1164,36 +1165,23 @@ export default function RecruitmentDashboard() {
 
           <div className="chart-card">
             <div className="card-header">
-              <div><strong>Interview Analytics</strong><div className="card-sub">Derived from interview fields and statuses</div></div>
+              <div><strong>Recent Candidate Activity</strong><div className="card-sub">Latest 10 recruitment events</div></div>
             </div>
-            <div className="dashboard-metric-grid">
-              <div className="dashboard-metric-item"><span>Scheduled</span><strong>{analytics.interviewsScheduled}</strong></div>
-              <div className="dashboard-metric-item"><span>L1 Scheduled</span><strong>{analytics.l1Scheduled}</strong></div>
-              <div className="dashboard-metric-item"><span>L2 Scheduled</span><strong>{analytics.l2Scheduled}</strong></div>
-              <div className="dashboard-metric-item"><span>L3 Scheduled</span><strong>{analytics.l3Scheduled}</strong></div>
-              <div className="dashboard-metric-item"><span>Completed</span><strong>{analytics.interviewsCompleted}</strong></div>
-              <div className="dashboard-metric-item"><span>Upcoming</span><strong>{analytics.upcomingCount}</strong></div>
-              <div className="dashboard-metric-item"><span>Rescheduled</span><strong>{analytics.rescheduled}</strong></div>
-              <div className="dashboard-metric-item"><span>No Shows</span><strong>{analytics.noShows}</strong></div>
-            </div>
-            <div style={{ marginTop: 10, height: 140, cursor: 'pointer' }}>
-              <Line
-                data={{
-                  labels: analytics.monthlyTrend.map(([month]) => month),
-                  datasets: [{ label: 'Candidates', data: analytics.monthlyTrend.map(([, count]) => count), borderColor: '#1E3A8A', backgroundColor: 'rgba(30,58,138,0.18)' }]
-                }}
-                options={{
-                  ...chartCommonOptions,
-                  plugins: { legend: { display: false } },
-                  onClick: (_evt: any, els: any[]) => {
-                    if (!els?.length) return
-                    const idx = els[0].index
-                    const month = analytics.monthlyTrend[idx]?.[0]
-                    if (month) openDetails('month', month, month)
-                  }
-                }}
-              />
-            </div>
+            {analytics.activities.length ? (
+              <div className="dashboard-list">
+                {analytics.activities.slice(0, 8).map((activity) => (
+                  <div key={activity.id} className="dashboard-list-row">
+                    <div>
+                      <strong>{activity.label}</strong>
+                      <div>{activity.detail}</div>
+                    </div>
+                    <span>{formatDateTime(activity.timestamp)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="dashboard-empty">No recent activity found.</div>
+            )}
           </div>
 
           <div className="chart-card">
@@ -1221,7 +1209,7 @@ export default function RecruitmentDashboard() {
             )}
           </div>
 
-          <div className="chart-card">
+          <div className="chart-card full-width">
             <div className="card-header">
               <div><strong>Jobs Overview</strong><div className="card-sub">Openings and job-wise pipeline</div></div>
             </div>
@@ -1274,27 +1262,6 @@ export default function RecruitmentDashboard() {
               </table>
               </div>
             </div>
-          </div>
-
-          <div className="chart-card">
-            <div className="card-header">
-              <div><strong>Recent Candidate Activity</strong><div className="card-sub">Latest 10 recruitment events</div></div>
-            </div>
-            {analytics.activities.length ? (
-              <div className="dashboard-list">
-                {analytics.activities.slice(0, 8).map((activity) => (
-                  <div key={activity.id} className="dashboard-list-row">
-                    <div>
-                      <strong>{activity.label}</strong>
-                      <div>{activity.detail}</div>
-                    </div>
-                    <span>{formatDateTime(activity.timestamp)}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="dashboard-empty">No recent activity found.</div>
-            )}
           </div>
 
           <div className="chart-card full-width">

@@ -383,9 +383,11 @@ tbody tr:hover{background:var(--row-hover);cursor:pointer}
 .dashboard-metric-item strong{font-size:18px;color:var(--ink)}
 .jobs-overview-kpis{margin-bottom:10px}
 .dashboard-table-wrap{overflow:auto;max-height:260px;border:1px solid var(--line);border-radius:8px}
-.dashboard-mini-table{width:100%;border-collapse:collapse;background:var(--paper-raised)}
+.dashboard-mini-table{width:100%;border-collapse:collapse;background:var(--paper-raised);table-layout:auto}
 .dashboard-mini-table th,
-.dashboard-mini-table td{padding:9px 10px;font-size:12px;border-bottom:1px solid var(--line);text-align:left}
+.dashboard-mini-table td{padding:10px 14px;font-size:12px;border-bottom:1px solid var(--line);text-align:left}
+/* Adjust the mini table headers to prevent overlap: allow wrapping and slightly smaller header font */
+.dashboard-mini-table th{white-space:normal;font-size:11px;letter-spacing:0.04em;padding-top:10px;padding-bottom:10px}
 .dashboard-mini-table tbody tr{cursor:pointer}
 .dashboard-mini-table tbody tr:hover{background:#f8fafc}
 
