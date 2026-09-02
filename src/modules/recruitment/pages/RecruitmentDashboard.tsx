@@ -18,6 +18,7 @@ import { CandidateService } from '../services/candidateService'
 import { useToast } from '../../../components/ToastProvider'
 import { useRecruitmentDashboard } from '../hooks/useRecruitmentDashboard'
 import '../../../styles/staHR.css'
+import CandidateProfileView from '../components/CandidateProfileView'
 import {
   CANDIDATE_STATUSES,
   STATUS_SHORT_LABEL,
@@ -683,6 +684,50 @@ export default function RecruitmentDashboard() {
     navigate(`/candidates?${query.toString()}`)
   }
 
+  const openInCandidates = () => {
+    const params: Record<string, string> = {}
+    // include existing dashboard filters where applicable
+    if (filters.job) params.job = filters.job
+    if (filters.skill) params.skill = filters.skill
+    if (filters.location) params.location = filters.location
+    if (filters.status) params.status = filters.status
+    if (filters.stage) params.stage = filters.stage
+    if (filters.experience) params.exp = filters.experience
+    if (filters.dateFrom) params.dateFrom = filters.dateFrom
+    if (filters.dateTo) params.dateTo = filters.dateTo
+    if (filters.recruiter) params.recruiter = filters.recruiter
+
+    // overlay clicked category should override or augment existing filters
+    if (detailFilter) {
+      const { key, value } = detailFilter
+      if (key === 'status') params.status = value
+      else if (key === 'stage') params.stage = value
+      else if (key === 'skill') params.skill = value
+      else if (key === 'job') params.job = value
+      else if (key === 'recruiter') params.recruiter = value
+      else if (key === 'source') params.search = value
+      else if (key === 'location') params.location = value
+      else if (key === 'month') {
+        // month format is YYYY-MM -> set dateFrom and dateTo for that month
+        const parts = String(value).split('-')
+        if (parts.length === 2) {
+          const y = Number(parts[0])
+          const m = Number(parts[1])
+          if (Number.isFinite(y) && Number.isFinite(m)) {
+            const first = `${String(y)}-${String(m).padStart(2,'0')}-01`
+            const lastDay = new Date(y, m, 0).getDate()
+            const last = `${String(y)}-${String(m).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`
+            params.dateFrom = first
+            params.dateTo = last
+          }
+        }
+      }
+      else if (key === 'experience') params.exp = value
+    }
+
+    navigateCandidates(params)
+  }
+
   async function handleExcelFile(file: File) {
     const { rows: parsedRows, errors: parsedErrors } = await parseCSVFile(file)
     setImportPreview(parsedRows)
@@ -751,6 +796,50 @@ export default function RecruitmentDashboard() {
     plugins: { legend: { display: false } },
     scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
   }
+
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [detailFilter, setDetailFilter] = useState<{ key: string; value: string; title?: string } | null>(null)
+  const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null)
+
+  const closeDetails = () => {
+    setDetailOpen(false)
+    setDetailFilter(null)
+  }
+
+  const openDetails = (key: string, value: string, title?: string) => {
+    setDetailFilter({ key, value, title })
+    setDetailOpen(true)
+    // selectedDetailId will be set by effect when detailRows is computed
+  }
+
+  const detailRows = useMemo(() => {
+    if (!detailFilter) return []
+    const { key, value } = detailFilter
+    // apply clicked filter on top of already applied dashboard filters (filteredRows)
+    return filteredRows.filter((r: any) => {
+      if (key === 'status') return (r._status_full || r._status || '') === value
+      if (key === 'stage') return (r._funnelStage || '') === value
+      if (key === 'skill') return (r._skills || []).map((s:string)=>String(s).toLowerCase()).includes(String(value).toLowerCase()) || String(r._role || '').toLowerCase() === String(value).toLowerCase()
+      if (key === 'experience') {
+        const bucket = EXPERIENCE_BUCKETS.find((b) => b.key === value)
+        if (!bucket) return false
+        const years = r._years
+        if (years == null) return false
+        return years >= bucket.min && years < bucket.max
+      }
+      if (key === 'job') return String(r._role || r.applied_job_title || r.job_id || r.applied_job_id || '').toLowerCase() === String(value).toLowerCase()
+      if (key === 'recruiter') return String(r._recruiter || '').toLowerCase() === String(value).toLowerCase()
+      if (key === 'source') return String(r._source || '').toLowerCase() === String(value).toLowerCase()
+      if (key === 'location') return String(r._location || '').toLowerCase() === String(value).toLowerCase()
+      if (key === 'month') return String((r._submittedDate || '')).startsWith(String(value))
+      return false
+    })
+  }, [detailFilter, filteredRows])
+
+  React.useEffect(() => {
+    if (!detailOpen) return
+    setSelectedDetailId(detailRows && detailRows.length ? String(detailRows[0].id) : null)
+  }, [detailRows, detailOpen])
 
   return (
     <div className="container">
@@ -870,7 +959,7 @@ export default function RecruitmentDashboard() {
             <div className="card-header">
               <div><strong>Recruitment Funnel</strong><div className="card-sub">Applications to selected conversion</div></div>
             </div>
-            <div style={{ marginTop: 12, height: 240 }}>
+            <div style={{ marginTop: 12, height: 240, cursor: 'pointer' }}>
               <Bar
                 data={{
                   labels: analytics.conversion.map((x) => STAGE_LABEL[x.stage]),
@@ -882,7 +971,10 @@ export default function RecruitmentDashboard() {
                     if (!els?.length) return
                     const index = els[0].index
                     const stage = analytics.conversion[index]?.stage
-                    if (stage) handleFilterChange('stage', stage)
+                    if (stage) {
+                      handleFilterChange('stage', stage)
+                      openDetails('stage', stage, STAGE_LABEL[stage])
+                    }
                   }
                 }}
               />
@@ -900,7 +992,7 @@ export default function RecruitmentDashboard() {
             <div className="card-header">
               <div><strong>Status Distribution</strong><div className="card-sub">Click a segment to filter</div></div>
             </div>
-              <div style={{ marginTop: 12, height: 240 }}>
+              <div style={{ marginTop: 12, height: 240, cursor: 'pointer' }}>
                 {/** Use the same display order as CANDIDATE_STATUSES but show short labels on the axis and full labels in tooltips */}
                 <Bar
                   data={{
@@ -937,7 +1029,10 @@ export default function RecruitmentDashboard() {
                       if (!els?.length) return
                       const idx = els[0].index
                       const full = CANDIDATE_STATUSES[idx]
-                      if (full) handleFilterChange('status', full)
+                      if (full) {
+                        handleFilterChange('status', full)
+                        openDetails('status', full, full)
+                      }
                     }
                   }}
                 />
@@ -957,7 +1052,7 @@ export default function RecruitmentDashboard() {
               </div>
             </div>
             {analytics.topSkills.length ? (
-              <div style={{ marginTop: 12, height: 280 }}>
+              <div style={{ marginTop: 12, height: 280, cursor: 'pointer' }}>
                 <Bar
                   data={{
                     labels: analytics.topSkills.map(([name]) => name),
@@ -969,7 +1064,10 @@ export default function RecruitmentDashboard() {
                     onClick: (_evt: any, els: any[]) => {
                       if (!els?.length) return
                       const skill = analytics.topSkills[els[0].index]?.[0]
-                      if (skill) handleFilterChange('skill', skill)
+                      if (skill) {
+                        handleFilterChange('skill', skill)
+                        openDetails('skill', skill, skill)
+                      }
                     }
                   }}
                 />
@@ -991,7 +1089,7 @@ export default function RecruitmentDashboard() {
             <div className="card-header">
               <div><strong>Experience Mix</strong><div className="card-sub">Click a range to filter</div></div>
             </div>
-            <div style={{ marginTop: 12, height: 220 }}>
+            <div style={{ marginTop: 12, height: 220, cursor: 'pointer' }}>
               <Bar
                 data={{
                   labels: EXPERIENCE_BUCKETS.map((b) => b.label),
@@ -1002,7 +1100,10 @@ export default function RecruitmentDashboard() {
                   onClick: (_evt: any, els: any[]) => {
                     if (!els?.length) return
                     const bucket = EXPERIENCE_BUCKETS[els[0].index]?.key
-                    if (bucket) handleFilterChange('experience', bucket)
+                    if (bucket) {
+                      handleFilterChange('experience', bucket)
+                      openDetails('experience', bucket, EXPERIENCE_BUCKETS[els[0].index]?.label)
+                    }
                   }
                 }}
               />
@@ -1016,7 +1117,7 @@ export default function RecruitmentDashboard() {
             {analytics.sourceDataAvailable ? (
               <div className="dashboard-source-list">
                 {analytics.sources.map((row) => (
-                  <button key={row.source} className="dashboard-source-item" onClick={() => navigateCandidates({ search: row.source })}>
+                  <button key={row.source} className="dashboard-source-item" onClick={() => { openDetails('source', row.source, row.source); }}>
                     <span>{row.source}</span>
                     <span>{row.count} ({row.percent}%) • Selected: {row.selected}</span>
                   </button>
@@ -1031,7 +1132,7 @@ export default function RecruitmentDashboard() {
             <div className="card-header">
               <div><strong>Location Coverage</strong><div className="card-sub">Top normalized locations (Unknown tracked separately)</div></div>
             </div>
-            <div style={{ marginTop: 12, height: 240 }}>
+            <div style={{ marginTop: 12, height: 240, cursor: 'pointer' }}>
               <Bar
                 data={{
                   labels: analytics.topLocations.map(([loc]) => loc),
@@ -1063,13 +1164,22 @@ export default function RecruitmentDashboard() {
               <div className="dashboard-metric-item"><span>Rescheduled</span><strong>{analytics.rescheduled}</strong></div>
               <div className="dashboard-metric-item"><span>No Shows</span><strong>{analytics.noShows}</strong></div>
             </div>
-            <div style={{ marginTop: 10, height: 140 }}>
+            <div style={{ marginTop: 10, height: 140, cursor: 'pointer' }}>
               <Line
                 data={{
                   labels: analytics.monthlyTrend.map(([month]) => month),
                   datasets: [{ label: 'Candidates', data: analytics.monthlyTrend.map(([, count]) => count), borderColor: '#1E3A8A', backgroundColor: 'rgba(30,58,138,0.18)' }]
                 }}
-                options={{ maintainAspectRatio: false, plugins: { legend: { display: false } } }}
+                options={{
+                  ...chartCommonOptions,
+                  plugins: { legend: { display: false } },
+                  onClick: (_evt: any, els: any[]) => {
+                    if (!els?.length) return
+                    const idx = els[0].index
+                    const month = analytics.monthlyTrend[idx]?.[0]
+                    if (month) openDetails('month', month, month)
+                  }
+                }}
               />
             </div>
           </div>
@@ -1131,7 +1241,7 @@ export default function RecruitmentDashboard() {
                 </thead>
                 <tbody>
                   {analytics.jobRows.slice(0, 6).map((job) => (
-                    <tr key={job.id} onClick={() => navigateCandidates({ job: job.title })}>
+                    <tr key={job.id} onClick={() => { openDetails('job', job.title, job.title) }}>
                       <td>{job.title}</td>
                       <td>{job.applicants}</td>
                       <td>{job.preScreening}</td>
@@ -1190,6 +1300,58 @@ export default function RecruitmentDashboard() {
           </div>
         </div>
       )}
+
+      {/* Candidate details modal opened when a graph section is clicked */}
+      <div className={`overlay ${detailOpen ? 'open' : ''}`} onClick={closeDetails} />
+      <div className={`modal ${detailOpen ? 'open' : ''}`} onClick={(e) => e.stopPropagation()}>
+        <div className="drawer-head">
+          <div>
+            <h2 id="drawerTitle">{detailFilter ? `${detailFilter.title || detailFilter.value} Candidates${filters.job ? ' — ' + filters.job : ''}` : 'Candidates'}</h2>
+            <div className="sub">{detailRows.length} matching candidates</div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button className="btn btn-primary" onClick={openInCandidates}>Open in Candidates</button>
+            <button className="drawer-close" onClick={closeDetails}>✕</button>
+          </div>
+        </div>
+        <div className="drawer-body">
+          {detailRows.length ? (
+            <div style={{ width: '100%', maxHeight: '70vh', overflowY: 'auto', paddingRight: 8 }}>
+              {detailRows.map((r: any) => {
+                const id = String(r.id)
+                const selected = selectedDetailId && String(selectedDetailId) === id
+                return (
+                  <div key={id} style={{ marginBottom: 8, borderBottom: '1px solid var(--line)', paddingBottom: 8 }}>
+                    <div id={`summary-${id}`} onClick={() => {
+                      setSelectedDetailId(prev => (prev === id ? null : id))
+                      setTimeout(() => {
+                        const el = document.getElementById(`detail-${id}`) || document.getElementById(`summary-${id}`)
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+                      }, 0)
+                    }} className="dashboard-list-row candidate-summary" style={{ padding: 8, cursor: 'pointer', background: selected ? 'rgba(14,165,233,0.06)' : 'transparent', borderRadius: 6 }}>
+                      <div className="candidate-summary-left">
+                        <strong className="candidate-summary-name">{r.name || r.candidateName || '-'}</strong>
+                        <div className="candidate-summary-role" style={{ fontSize: 13, color: 'var(--muted)' }}>{r._role || r.applied_job_title || '-'}</div>
+                      </div>
+                      <div className="candidate-summary-meta">
+                        <div className="candidate-summary-status" style={{ fontSize: 13 }}>{r._status_full || r._status || '-'}</div>
+                        <div className="candidate-summary-date" style={{ fontSize: 12, color: 'var(--muted)' }}>{r._submittedDate || '-'}</div>
+                      </div>
+                    </div>
+                    <div id={`detail-${id}`} style={{ marginTop: 8 }}>
+                      {selected ? (
+                        <CandidateProfileView candidate={r} jobsMap={jobsMap} />
+                      ) : null}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="drawer-body"><div className="dashboard-empty">No candidates match the selected filters and category.</div></div>
+          )}
+        </div>
+      </div>
 
       <div className={`overlay ${drawerOpen ? 'open' : ''}`} onClick={closeDrawer} />
       <div className={`modal ${drawerOpen ? 'open' : ''}`} onClick={(e) => e.stopPropagation()}>
