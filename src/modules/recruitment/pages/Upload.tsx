@@ -19,10 +19,11 @@ const countUnique = (rows: any[], key: string) => {
 
 const statusClass = (status: string) => {
   const s = String(status || 'progress').toLowerCase()
-  if (s.includes('select')) return 'selected'
+  if (s.includes('select') || s.includes('shortlist')) return 'selected'
   if (s.includes('reject')) return 'rejected'
-  if (s.includes('hold')) return 'hold'
-  if (s.includes('drop')) return 'dropped'
+  if (s.includes('hold') || s.includes('on hold')) return 'hold'
+  if (s.includes('drop') || s.includes('no show')) return 'dropped'
+  if (s.includes('pre-screen') || s.includes('evaluation') || s.includes('profile shared') || s.includes('scheduled') || s.includes('in-progress')) return 'progress'
   return 'progress'
 }
 

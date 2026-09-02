@@ -121,6 +121,21 @@ serve(async (req) => {
       if (id) {
         const { data, error } = await sb.from('candidates').select('*').eq('id', id).single()
         if (error) return new Response(JSON.stringify({ error: error.message || error }), { status: 500, headers: corsHeaders })
+        // attach lookup labels
+        try {
+          const psRows = (await (sbAdmin || sb).from('profile_sourcing').select('*')).data || []
+          const psMapById: Record<string,string> = {}
+          psRows.forEach((r: any) => { if (r && r.id) psMapById[r.id] = r.name })
+          const consRows = (await (sbAdmin || sb).from('consultants').select('*')).data || []
+          const consMapById: Record<string,string> = {}
+          consRows.forEach((r: any) => { if (r && r.id) consMapById[r.id] = r.name })
+          if (data) {
+            data.profile_sourcing_label = data.profile_sourcing || psMapById[data.profile_sourcing_id] || ''
+            data.consultant_label = data.consultant || consMapById[data.consultant_id] || ''
+          }
+        } catch (e) {
+          // ignore label attach errors
+        }
         return new Response(JSON.stringify({ data }), { status: 200, headers: corsHeaders })
       }
       const from = (page - 1) * perPage
@@ -140,18 +155,36 @@ serve(async (req) => {
         }
       } catch (e) { console.warn('failed to resolve clientId for candidates request', e) }
 
+      // fetch candidate rows
+      let data: any[] = []
+      let count: number | null = null
       if (clientId) {
-        // find job ids for this client
         const { data: jobsForClient } = await sb.from('jobs').select('id').eq('client_id', clientId)
         const jobIds = (jobsForClient || []).map((j: any) => j.id)
         const query = sb.from('candidates').select('*', { count: 'estimated' }).order('created_at', { ascending: false })
-        const { data, error, count } = jobIds.length ? await query.in('applied_job_id', jobIds).range(from, to) : await query.range(from, to)
-        if (error) return new Response(JSON.stringify({ error: error.message || error }), { status: 500, headers: corsHeaders })
-        return new Response(JSON.stringify({ data, count }), { status: 200, headers: corsHeaders })
+        const res = jobIds.length ? await query.in('applied_job_id', jobIds).range(from, to) : await query.range(from, to)
+        data = res.data || []
+        count = res.count || null
+      } else {
+        const res = await sb.from('candidates').select('*', { count: 'estimated' }).order('created_at', { ascending: false }).range(from, to)
+        data = res.data || []
+        count = res.count || null
       }
-
-      const { data, error, count } = await sb.from('candidates').select('*', { count: 'estimated' }).order('created_at', { ascending: false }).range(from, to)
-      if (error) return new Response(JSON.stringify({ error: error.message || error }), { status: 500, headers: corsHeaders })
+      // attach lookup labels for profile_sourcing and consultant
+      try {
+        const psRows = (await sb.from('profile_sourcing').select('*')).data || []
+        const psMapById: Record<string,string> = {}
+        psRows.forEach((r: any) => { if (r && r.id) psMapById[r.id] = r.name })
+        const consRows = (await sb.from('consultants').select('*')).data || []
+        const consMapById: Record<string,string> = {}
+        consRows.forEach((r: any) => { if (r && r.id) consMapById[r.id] = r.name })
+        data.forEach((r: any) => {
+          r.profile_sourcing_label = r.profile_sourcing || psMapById[r.profile_sourcing_id] || ''
+          r.consultant_label = r.consultant || consMapById[r.consultant_id] || ''
+        })
+      } catch (e) {
+        // ignore
+      }
       return new Response(JSON.stringify({ data, count }), { status: 200, headers: corsHeaders })
     }
 
@@ -428,9 +461,70 @@ serve(async (req) => {
         applied_job_title: c.applied_job_title || c.job_title || c.job_role || c.role || null,
         resume_url: c.resume_url || c.resume || null,
         resume_path: c.resume_path || null
+        ,
+        profile_sourcing: c.profile_sourcing || c.profile_sourcing_name || '',
+        consultant: c.consultant || c.consultant_name || ''
       })
 
       const candidatesWithUpload = candidates.map((c: any) => ({ ...allowed(c), ...(up ? { upload_id: up.id } : {}) }))
+      // Load lookup maps for validation/resolution
+      const psRows = (await (sbAdmin || sb).from('profile_sourcing').select('*')).data || []
+      const psMapByName: Record<string,string> = {}
+      const psMapById: Record<string,string> = {}
+      psRows.forEach((r: any) => { if (r && r.name) { psMapByName[String(r.name).toLowerCase()] = r.id; psMapById[r.id] = r.name } })
+      const consultantsRows = (await (sbAdmin || sb).from('consultants').select('*')).data || []
+      const consMapByName: Record<string,string> = {}
+      const consMapById: Record<string,string> = {}
+      consultantsRows.forEach((r: any) => { if (r && r.name) { consMapByName[String(r.name).toLowerCase()] = r.id; consMapById[r.id] = r.name } })
+
+      // Validate & resolve profile_sourcing and consultant names to IDs before proceeding.
+      const rowErrors: any[] = []
+      for (let i = 0; i < candidatesWithUpload.length; i++) {
+        const c = candidatesWithUpload[i]
+        try {
+          // resolve profile_sourcing name -> id if provided as name
+          if (c.profile_sourcing && !c.profile_sourcing_id) {
+            const lookup = psMapByName[String(c.profile_sourcing).trim().toLowerCase()]
+            if (!lookup) {
+              rowErrors.push({ row: i + 1, error: `Unknown profile_sourcing: ${String(c.profile_sourcing)}` })
+              continue
+            }
+            c.profile_sourcing_id = lookup
+          }
+          // If profile_sourcing_id provided directly, normalize label if possible
+          if (c.profile_sourcing_id && !c.profile_sourcing) {
+            c.profile_sourcing = psMapById[c.profile_sourcing_id] || ''
+          }
+
+          // If profile_sourcing is Consultant, consultant must be provided and resolved
+          const psLabel = String(c.profile_sourcing || '').trim().toLowerCase()
+          if (psLabel === 'consultant') {
+            if (!c.consultant && !c.consultant_id) {
+              rowErrors.push({ row: i + 1, error: 'Consultant is required when Profile Sourcing is Consultant' })
+              continue
+            }
+            if (c.consultant && !c.consultant_id) {
+              const lookupC = consMapByName[String(c.consultant).trim().toLowerCase()]
+              if (!lookupC) {
+                rowErrors.push({ row: i + 1, error: `Unknown consultant: ${String(c.consultant)}` })
+                continue
+              }
+              c.consultant_id = lookupC
+            }
+            if (c.consultant_id && !c.consultant) c.consultant = consMapById[c.consultant_id] || ''
+          } else {
+            // if not Consultant sourcing, clear consultant fields
+            delete c.consultant
+            delete c.consultant_id
+          }
+        } catch (e) {
+          rowErrors.push({ row: i + 1, error: 'Validation error' })
+        }
+      }
+      if (rowErrors.length) {
+        if (up) await (sbAdmin || sb).from('uploads').update({ status: 'failed', report: { error: rowErrors } }).eq('id', up.id)
+        return new Response(JSON.stringify({ error: 'Validation errors in import rows', rows: rowErrors }), { status: 400, headers: corsHeaders })
+      }
       const writerCandidates = sbAdmin || sb
 
       const toInsert: any[] = []
@@ -445,7 +539,35 @@ serve(async (req) => {
             const existingRes: any = await writerCandidates.from('candidates').select('*').eq('email', email).eq('applied_job_id', jobId).limit(1).maybeSingle()
             if (!existingRes.error && existingRes.data) {
               const existingId = existingRes.data.id
-              const { data: upData, error: upErr } = await writerCandidates.from('candidates').update(c).eq('id', existingId).select().single()
+              // Build clean update payload containing only real DB columns
+              const updatePayloadClean: any = {
+                name: c.name,
+                role: c.role,
+                date: c.date,
+                exp: c.exp,
+                cctc: c.cctc,
+                ectc: c.ectc,
+                email: c.email,
+                phone: c.phone,
+                linkedin: c.linkedin,
+                location: c.location,
+                np: c.np,
+                availability: c.availability,
+                intstatus: c.intstatus,
+                selstatus: c.selstatus,
+                remarks: c.remarks,
+                f2f: c.f2f,
+                interview_slot: c.interview_slot,
+                confirmed_availability: c.confirmed_availability,
+                applied_job_id: c.applied_job_id,
+                applied_job_title: c.applied_job_title,
+                resume_url: c.resume_url,
+                resume_path: c.resume_path,
+                upload_id: c.upload_id || null,
+                profile_sourcing_id: c.profile_sourcing_id || null,
+                consultant_id: c.consultant_id || null
+              }
+              const { data: upData, error: upErr } = await writerCandidates.from('candidates').update(updatePayloadClean).eq('id', existingId).select().single()
               if (upErr) {
                 console.error('candidate update error', upErr)
                 if (up) await (sbAdmin || sb).from('uploads').update({ status: 'failed', report: { error: upErr.message } }).eq('id', up.id)
@@ -460,7 +582,34 @@ serve(async (req) => {
               const existingByEmailRole: any = await writerCandidates.from('candidates').select('*').eq('email', email).ilike('role', c.role || '').limit(1).maybeSingle()
               if (!existingByEmailRole.error && existingByEmailRole.data) {
                 const existingId = existingByEmailRole.data.id
-                const { data: upData, error: upErr } = await writerCandidates.from('candidates').update(c).eq('id', existingId).select().single()
+                const updatePayloadClean: any = {
+                  name: c.name,
+                  role: c.role,
+                  date: c.date,
+                  exp: c.exp,
+                  cctc: c.cctc,
+                  ectc: c.ectc,
+                  email: c.email,
+                  phone: c.phone,
+                  linkedin: c.linkedin,
+                  location: c.location,
+                  np: c.np,
+                  availability: c.availability,
+                  intstatus: c.intstatus,
+                  selstatus: c.selstatus,
+                  remarks: c.remarks,
+                  f2f: c.f2f,
+                  interview_slot: c.interview_slot,
+                  confirmed_availability: c.confirmed_availability,
+                  applied_job_id: c.applied_job_id,
+                  applied_job_title: c.applied_job_title,
+                  resume_url: c.resume_url,
+                  resume_path: c.resume_path,
+                  upload_id: c.upload_id || null,
+                  profile_sourcing_id: c.profile_sourcing_id || null,
+                  consultant_id: c.consultant_id || null
+                }
+                const { data: upData, error: upErr } = await writerCandidates.from('candidates').update(updatePayloadClean).eq('id', existingId).select().single()
                 if (upErr) {
                   console.error('candidate update error', upErr)
                   if (up) await (sbAdmin || sb).from('uploads').update({ status: 'failed', report: { error: upErr.message } }).eq('id', up.id)
@@ -482,7 +631,34 @@ serve(async (req) => {
               const existingByNameRole: any = await writerCandidates.from('candidates').select('*').ilike('name', name).ilike('role', role).limit(1).maybeSingle()
               if (!existingByNameRole.error && existingByNameRole.data) {
                 const existingId = existingByNameRole.data.id
-                const { data: upData, error: upErr } = await writerCandidates.from('candidates').update(c).eq('id', existingId).select().single()
+                const updatePayloadClean: any = {
+                  name: c.name,
+                  role: c.role,
+                  date: c.date,
+                  exp: c.exp,
+                  cctc: c.cctc,
+                  ectc: c.ectc,
+                  email: c.email,
+                  phone: c.phone,
+                  linkedin: c.linkedin,
+                  location: c.location,
+                  np: c.np,
+                  availability: c.availability,
+                  intstatus: c.intstatus,
+                  selstatus: c.selstatus,
+                  remarks: c.remarks,
+                  f2f: c.f2f,
+                  interview_slot: c.interview_slot,
+                  confirmed_availability: c.confirmed_availability,
+                  applied_job_id: c.applied_job_id,
+                  applied_job_title: c.applied_job_title,
+                  resume_url: c.resume_url,
+                  resume_path: c.resume_path,
+                  upload_id: c.upload_id || null,
+                  profile_sourcing_id: c.profile_sourcing_id || null,
+                  consultant_id: c.consultant_id || null
+                }
+                const { data: upData, error: upErr } = await writerCandidates.from('candidates').update(updatePayloadClean).eq('id', existingId).select().single()
                 if (upErr) {
                   console.error('candidate update error', upErr)
                   if (up) await (sbAdmin || sb).from('uploads').update({ status: 'failed', report: { error: upErr.message } }).eq('id', up.id)
@@ -503,7 +679,35 @@ serve(async (req) => {
 
       let inserted: any[] = []
       if (toInsert.length > 0) {
-        const { data: insertedData, error: insErr } = await writerCandidates.from('candidates').insert(toInsert).select()
+        // Prepare clean insert rows with only DB columns (avoid inserting label text fields)
+        const insertRows = toInsert.map((c: any) => ({
+          name: c.name,
+          role: c.role,
+          date: c.date,
+          exp: c.exp,
+          cctc: c.cctc,
+          ectc: c.ectc,
+          email: c.email,
+          phone: c.phone,
+          linkedin: c.linkedin,
+          location: c.location,
+          np: c.np,
+          availability: c.availability,
+          intstatus: c.intstatus,
+          selstatus: c.selstatus,
+          remarks: c.remarks,
+          f2f: c.f2f,
+          interview_slot: c.interview_slot,
+          confirmed_availability: c.confirmed_availability,
+          applied_job_id: c.applied_job_id,
+          applied_job_title: c.applied_job_title,
+          resume_url: c.resume_url,
+          resume_path: c.resume_path,
+          upload_id: c.upload_id || null,
+          profile_sourcing_id: c.profile_sourcing_id || null,
+          consultant_id: c.consultant_id || null
+        }))
+        const { data: insertedData, error: insErr } = await writerCandidates.from('candidates').insert(insertRows).select()
         if (insErr) {
           console.error('candidates insert error', insErr)
           if (up) await (sbAdmin || sb).from('uploads').update({ status: 'failed', report: { error: insErr.message } }).eq('id', up.id)
@@ -512,7 +716,13 @@ serve(async (req) => {
         inserted = insertedData || []
       }
 
+      // Attach human-readable labels for profile_sourcing and consultant for UI exports
       const totalSucceeded = (inserted.length) + (updated.length)
+      const allCandidates = (inserted || []).concat(updated || [])
+      allCandidates.forEach((r: any) => {
+        r.profile_sourcing_label = r.profile_sourcing || psMapById[r.profile_sourcing_id] || ''
+        r.consultant_label = r.consultant || consMapById[r.consultant_id] || ''
+      })
       if (up) await (sbAdmin || sb).from('uploads').update({ status: 'succeeded', successful_records: totalSucceeded, failed_records: candidates.length - totalSucceeded }).eq('id', up.id)
       console.log('import succeeded', { uploadId: up?.id, insertedCount: inserted.length, updatedCount: updated.length })
       return new Response(JSON.stringify({ upload: up, inserted, updated }), { status: 200, headers: corsHeaders })
@@ -603,7 +813,50 @@ serve(async (req) => {
         updates.applied_job_id = null
       }
 
-      const { data, error } = await (sbAdmin || sb).from('candidates').update(updates).eq('id', id).select().single()
+      // Resolve profile_sourcing and consultant in update payload
+      try {
+        const psRows = (await (sbAdmin || sb).from('profile_sourcing').select('*')).data || []
+        const psMapByName: Record<string,string> = {}
+        const psMapById: Record<string,string> = {}
+        psRows.forEach((r: any) => { if (r && r.id) { psMapById[r.id] = r.name; psMapByName[String(r.name).toLowerCase()] = r.id } })
+        const consRows = (await (sbAdmin || sb).from('consultants').select('*')).data || []
+        const consMapByName: Record<string,string> = {}
+        const consMapById: Record<string,string> = {}
+        consRows.forEach((r: any) => { if (r && r.id) { consMapById[r.id] = r.name; consMapByName[String(r.name).toLowerCase()] = r.id } })
+
+        if (updates.profile_sourcing && !updates.profile_sourcing_id) {
+          const probe = String(updates.profile_sourcing).trim().toLowerCase()
+          const id = psMapByName[probe]
+          if (id) updates.profile_sourcing_id = id
+        }
+        if (updates.profile_sourcing_id && !updates.profile_sourcing) updates.profile_sourcing = psMapById[updates.profile_sourcing_id] || ''
+
+        const psLabel = String(updates.profile_sourcing || '').trim().toLowerCase()
+        if (psLabel === 'consultant') {
+          if (!updates.consultant && !updates.consultant_id) {
+            return new Response(JSON.stringify({ error: 'Consultant is required when Profile Sourcing is Consultant' }), { status: 400, headers: corsHeaders })
+          }
+          if (updates.consultant && !updates.consultant_id) {
+            const cid = consMapByName[String(updates.consultant).trim().toLowerCase()]
+            if (!cid) return new Response(JSON.stringify({ error: `Unknown consultant: ${updates.consultant}` }), { status: 400, headers: corsHeaders })
+            updates.consultant_id = cid
+          }
+        } else {
+          // clear consultant if profile sourcing not consultant
+          updates.consultant = null
+          updates.consultant_id = null
+        }
+      } catch (e) {
+        console.warn('failed to resolve profile_sourcing/consultant in update', e)
+      }
+
+      // Build clean updates object containing only DB columns; ignore label fields like `consultant` or `profile_sourcing` strings
+      const updatesClean: any = {}
+      const allowedFields = ['name','role','date','exp','cctc','ectc','email','phone','linkedin','location','np','availability','intstatus','selstatus','remarks','f2f','interview_slot','confirmed_availability','applied_job_id','applied_job_title','resume_url','resume_path','upload_id','profile_sourcing_id','consultant_id','client_feedback']
+      for (const k of allowedFields) {
+        if (Object.prototype.hasOwnProperty.call(updates, k)) updatesClean[k] = updates[k]
+      }
+      const { data, error } = await (sbAdmin || sb).from('candidates').update(updatesClean).eq('id', id).select().single()
       if (error) return new Response(JSON.stringify({ error: error.message || error }), { status: 500, headers: corsHeaders })
       return new Response(JSON.stringify({ updated: data }), { status: 200, headers: corsHeaders })
     }

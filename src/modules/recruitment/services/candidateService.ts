@@ -76,7 +76,15 @@ async function postEdge(path: string, body: any, method = 'POST') {
     if (!res.ok) {
       const txt = await res.text()
       console.error('postEdge: non-ok response', { status: res.status, text: txt })
-      throw new Error(`Edge call failed: ${txt}`)
+      try {
+        const parsed = JSON.parse(txt)
+        const e: any = new Error('Edge call failed')
+        e.response = parsed
+        e.status = res.status
+        throw e
+      } catch (_e) {
+        throw new Error(`Edge call failed: ${txt}`)
+      }
     }
     const json = await res.json()
     try { console.debug('postEdge: response', { status: res.status, resultPreview: Array.isArray(json) ? `array(${json.length})` : typeof json }) } catch (e) {}
@@ -126,6 +134,10 @@ export const CandidateService = {
         remarks: c.remarks,
         client_feedback: c.client_feedback || null,
         resume_url: c.resume_url || c.resume || null,
+        profile_sourcing_id: c.profile_sourcing_id || c.profile_sourcing || null,
+        profile_sourcing: c.profile_sourcing || null,
+        consultant_id: c.consultant_id || c.consultant || null,
+        consultant: c.consultant || null,
         applied_job_id: c.applied_job_id,
         applied_job_title: c.applied_job_title,
         f2f: c.f2f
@@ -161,6 +173,10 @@ export const CandidateService = {
         remarks: c.remarks,
         client_feedback: c.client_feedback || null,
         resume_url: c.resume_url || c.resume || null,
+        profile_sourcing_id: c.profile_sourcing_id || c.profile_sourcing || null,
+        profile_sourcing: c.profile_sourcing || null,
+        consultant_id: c.consultant_id || c.consultant || null,
+        consultant: c.consultant || null,
         applied_job_id: c.applied_job_id || c.job_id || null,
         applied_job_title: c.applied_job_title || c.job_title || c.job_role || c.role || null,
         f2f: c.f2f
@@ -175,8 +191,8 @@ export const CandidateService = {
       } catch (e) {}
       return inserted
     } catch (e: any) {
-      const msg = e?.message || String(e)
-      throw new Error('Failed to import candidates: ' + msg)
+      console.error('CandidateService.createMany error', e)
+      throw e
     }
   },
   async update(id: string, candidate: Partial<Candidate>) {

@@ -4,6 +4,10 @@ export type Candidate = {
   applied_job_id?: string
   applied_job_title?: string
   name: string
+  profile_sourcing_id?: string
+  profile_sourcing?: string
+  consultant_id?: string
+  consultant?: string
   date?: string
   exp?: string
   cctc?: string | number
