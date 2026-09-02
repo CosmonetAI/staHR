@@ -18,10 +18,18 @@ import { CandidateService } from '../services/candidateService'
 import { useToast } from '../../../components/ToastProvider'
 import { useRecruitmentDashboard } from '../hooks/useRecruitmentDashboard'
 import '../../../styles/staHR.css'
+import CandidateProfileView from '../components/CandidateProfileView'
+import {
+  CANDIDATE_STATUSES,
+  STATUS_SHORT_LABEL,
+  STATUS_COLORS,
+  FUNNEL_STAGES,
+  IN_PIPELINE_STATUSES,
+  CLOSED_OUT_STATUSES,
+  statusToFunnelKey
+} from '../constants/statuses'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, PointElement, LineElement, Tooltip, Legend)
-
-type StatusKey = 'selected' | 'rejected' | 'hold' | 'progress' | 'dropped'
 
 type DashboardFilters = {
   dateFrom: string
@@ -52,32 +60,8 @@ type ActivityItem = {
   detail: string
   timestamp: number
 }
-
-const STATUS_LABEL: Record<StatusKey, string> = {
-  selected: 'Selected',
-  rejected: 'Rejected',
-  hold: 'On Hold',
-  progress: 'In Progress',
-  dropped: 'Dropped'
-}
-
-const STATUS_COLORS: Record<StatusKey, string> = {
-  selected: '#22C55E',
-  rejected: '#EF4444',
-  hold: '#38BDF8',
-  progress: '#F59E0B',
-  dropped: '#64748B'
-}
-
-const STAGE_ORDER = ['applications', 'screening', 'shortlisted', 'interview', 'final_round', 'selected'] as const
-const STAGE_LABEL: Record<(typeof STAGE_ORDER)[number], string> = {
-  applications: 'Applications',
-  screening: 'Screening',
-  shortlisted: 'Shortlisted',
-  interview: 'Interview',
-  final_round: 'Final Round',
-  selected: 'Selected'
-}
+const STAGE_ORDER = FUNNEL_STAGES.map((s) => s.key)
+const STAGE_LABEL: Record<string, string> = FUNNEL_STAGES.reduce((acc, s) => ({ ...acc, [s.key]: s.label }), {} as Record<string, string>)
 
 const EXPERIENCE_BUCKETS = [
   { key: '0-2', min: 0, max: 2, label: '0-2 years' },
@@ -87,13 +71,31 @@ const EXPERIENCE_BUCKETS = [
   { key: '12+', min: 12, max: Number.POSITIVE_INFINITY, label: '12+ years' }
 ]
 
-function normalizedStatus(raw: any): StatusKey {
-  const value = String(raw || '').toLowerCase()
-  if (value.includes('select') || value.includes('offer')) return 'selected'
-  if (value.includes('reject')) return 'rejected'
-  if (value.includes('hold')) return 'hold'
-  if (value.includes('drop')) return 'dropped'
-  return 'progress'
+function getFullStatusLabel(status: any) {
+  const raw = String(status || '').trim()
+  if (!raw) return ''
+  const s = raw.toLowerCase()
+  const NEW_LABELS = [
+    'Pre-screening in-progress',
+    'Pre-screening done and submitted for evaluation',
+    'Evaluation in-progress',
+    'Evaluation done and submitted for sharing with client',
+    'Profile shared with client',
+    'Scheduled for L1 discussion',
+    'Scheduled for L2 discussion',
+    'Scheduled for L3 discussion',
+    'Candidate shortlisted',
+    'On hold',
+    'Rejected',
+    'Dropped Out'
+  ]
+  for (const lbl of NEW_LABELS) if (lbl.toLowerCase() === s) return lbl
+  if (s === 'progress' || s === 'in-progress' || s.includes('process') || s.includes('pending') || s.includes('round')) return 'Pre-screening in-progress'
+  if (s === 'hold' || s.includes('hold')) return 'On hold'
+  if (s === 'selected' || s.includes('select') || s.includes('offer')) return 'Candidate shortlisted'
+  if (s === 'rejected' || s.includes('reject')) return 'Rejected'
+  if (s === 'dropped' || s.includes('drop')) return 'Dropped Out'
+  return raw
 }
 
 function toEpoch(value: any): number | null {
@@ -160,17 +162,7 @@ function inferSource(row: Record<string, any>): string {
   return 'Other'
 }
 
-function inferStage(row: Record<string, any>): (typeof STAGE_ORDER)[number] {
-  const status = normalizedStatus(row.selstatus)
-  const intStatus = String(row.intstatus || '').toLowerCase()
-  if (status === 'selected') return 'selected'
-  if (intStatus.includes('final')) return 'final_round'
-  if (intStatus.includes('interview') || row.interview_slot || row.confirmed_availability || row.f2f) return 'interview'
-  if (intStatus.includes('shortlist')) return 'shortlisted'
-  if (intStatus.includes('screen')) return 'screening'
-  if (status === 'hold') return 'screening'
-  return 'applications'
-}
+// inferStage removed — funnel stage mapping is handled by statusToFunnelKey in constants
 
 function getRecruiter(row: Record<string, any>): string {
   return String(row.recruiter || row.recruiter_name || row.owner || '').trim()
@@ -291,10 +283,11 @@ export default function RecruitmentDashboard() {
       const role = String(row.role || row.job_role || row.applied_job_title || '').trim()
       const locationName = normalizeLocation(row.location || row.current_location)
       const skills = splitSkills(row)
-      const stage = inferStage(row)
       const recruiter = getRecruiter(row)
       const source = inferSource(row)
-      const status = normalizedStatus(row.selstatus)
+      const statusFull = getFullStatusLabel(row.selstatus)
+      const statusKey = statusToFunnelKey(statusFull)
+      const stage = statusKey || statusToFunnelKey(statusFull)
       const years = parseYears(row.exp ?? row.experience)
       const interviewTs = [row.confirmed_availability, row.interview_slot, row.f2f]
         .map((v) => toEpoch(v))
@@ -311,7 +304,9 @@ export default function RecruitmentDashboard() {
         _stage: stage,
         _recruiter: recruiter,
         _source: source,
-        _status: status,
+        _status: statusFull,
+        _status_full: statusFull,
+        _funnelStage: statusKey,
         _years: years,
         _interviewTs: interviewTs,
         _submittedDate: submittedDate
@@ -348,8 +343,8 @@ export default function RecruitmentDashboard() {
         if (!rowSkillMatch && !jobSkillMatch) return false
       }
       if (filters.location && row._location !== filters.location) return false
-      if (filters.status && row._status !== filters.status) return false
-      if (filters.stage && row._stage !== filters.stage) return false
+      if (filters.status && row._status_full !== filters.status) return false
+      if (filters.stage && row._funnelStage !== filters.stage) return false
       if (filters.experience) {
         const bucket = EXPERIENCE_BUCKETS.find((b) => b.key === filters.experience)
         if (!bucket) return false
@@ -362,26 +357,20 @@ export default function RecruitmentDashboard() {
 
   const selectedSkillBreakdown = useMemo(() => {
     if (!filters.skill) return null
-    const counts: Record<StatusKey, number> = { selected: 0, rejected: 0, hold: 0, progress: 0, dropped: 0 }
+    const counts: Record<string, number> = CANDIDATE_STATUSES.reduce((acc, s) => ({ ...acc, [s]: 0 }), {} as Record<string, number>)
     filteredRows.forEach((row: any) => {
-      counts[row._status as StatusKey] += 1
+      const k = row._status_full || row._status
+      counts[k] = (counts[k] || 0) + 1
     })
     return counts
   }, [filteredRows, filters.skill])
 
   const analytics = useMemo(() => {
     const total = filteredRows.length
-    const statusCounts: Record<StatusKey, number> = { selected: 0, rejected: 0, hold: 0, progress: 0, dropped: 0 }
+    const statusCounts: Record<string, number> = CANDIDATE_STATUSES.reduce((acc, s) => ({ ...acc, [s]: 0 }), {} as Record<string, number>)
     const expCounts: Record<string, number> = { '0-2': 0, '2-5': 0, '5-8': 0, '8-12': 0, '12+': 0 }
     const locCounts: Record<string, number> = {}
-    const stageCounts: Record<(typeof STAGE_ORDER)[number], number> = {
-      applications: 0,
-      screening: 0,
-      shortlisted: 0,
-      interview: 0,
-      final_round: 0,
-      selected: 0
-    }
+    const stageCounts: Record<string, number> = FUNNEL_STAGES.reduce((acc, s) => ({ ...acc, [s.key]: 0 }), {} as Record<string, number>)
     const sourceCounts: Record<string, number> = {}
     const sourceSelectedCounts: Record<string, number> = {}
     const skillsCounts: Record<string, number> = {}
@@ -394,7 +383,10 @@ export default function RecruitmentDashboard() {
     })
 
     filteredRows.forEach((row) => {
-      statusCounts[row._status as StatusKey] += 1
+      const statusKey = row._status_full || row._status
+      statusCounts[statusKey] = (statusCounts[statusKey] || 0) + 1
+      const funnelKey = row._funnelStage || statusToFunnelKey(statusKey)
+      if (funnelKey && funnelKey !== 'applications') stageCounts[funnelKey] = (stageCounts[funnelKey] || 0) + 1
       if (row._years != null) {
         if (row._years < 2) expCounts['0-2'] += 1
         else if (row._years < 5) expCounts['2-5'] += 1
@@ -404,7 +396,7 @@ export default function RecruitmentDashboard() {
       }
 
       locCounts[row._location] = (locCounts[row._location] || 0) + 1
-      stageCounts[row._stage as (typeof STAGE_ORDER)[number]] += 1
+      // legacy _stage is ignored for funnel; we use _funnelStage computed above
 
       if (row._source) {
         sourceCounts[row._source] = (sourceCounts[row._source] || 0) + 1
@@ -458,7 +450,7 @@ export default function RecruitmentDashboard() {
           jobTitle: String(r._role || '-'),
           round: String(r.round || r.interview_round || r.intstatus || 'Interview'),
           interviewer: String(r.interviewer || r.interviewer_name || '-'),
-          status: STATUS_LABEL[r._status as StatusKey] || 'In Progress',
+          status: String(r._status_full || r._status || ''),
           timestamp: confirmedTs,
           whenLabel: formatDateTime(confirmedTs)
         }
@@ -485,7 +477,7 @@ export default function RecruitmentDashboard() {
         if (updatedAt && (!createdAt || updatedAt !== createdAt)) {
           entries.push({
             id: `${r.id}-updated`,
-            label: `Status: ${STATUS_LABEL[r._status as StatusKey]}`,
+            label: `Status: ${r._status_full || r._status}`,
             detail: `${r.name || 'Candidate'} updated`,
             timestamp: updatedAt
           })
@@ -508,8 +500,8 @@ export default function RecruitmentDashboard() {
     const sourceDataAvailable = sources.length > 0
 
     const conversion = STAGE_ORDER.map((stage, idx) => {
-      const count = stageCounts[stage] || 0
-      const prev = idx === 0 ? count : stageCounts[STAGE_ORDER[idx - 1]] || 0
+      const count = stage === 'applications' ? total : stageCounts[stage] || 0
+      const prev = idx === 0 ? count : (stage === 'applications' ? total : stageCounts[STAGE_ORDER[idx - 1]] || 0)
       const rate = idx === 0 || prev === 0 ? null : Math.round((count / prev) * 100)
       return { stage, count, rate }
     })
@@ -529,14 +521,32 @@ export default function RecruitmentDashboard() {
       })
 
       const interviews = related.filter((r) => !!(r.interview_slot || r.confirmed_availability || r.f2f)).length
-      const selected = related.filter((r) => r._status === 'selected').length
+      const preScreening = related.filter((r) => ['Pre-screening in-progress','Pre-screening done and submitted for evaluation'].includes(r._status_full)).length
+      const evaluation = related.filter((r) => ['Evaluation in-progress','Evaluation done and submitted for sharing with client'].includes(r._status_full)).length
+      const clientShared = related.filter((r) => r._status_full === 'Profile shared with client').length
+      const l1 = related.filter((r) => r._status_full === 'Scheduled for L1 discussion').length
+      const l2 = related.filter((r) => r._status_full === 'Scheduled for L2 discussion').length
+      const l3 = related.filter((r) => r._status_full === 'Scheduled for L3 discussion').length
+      const shortlisted = related.filter((r) => r._status_full === 'Candidate shortlisted').length
+      const onHold = related.filter((r) => r._status_full === 'On hold').length
+      const rejected = related.filter((r) => r._status_full === 'Rejected').length
+      const dropped = related.filter((r) => r._status_full === 'Dropped Out').length
 
       return {
           id: String(job.id || job.job_id || job.title),
           title: String(job.title || 'Untitled Job'),
           applicants: related.length,
           interviews,
-          selected,
+          preScreening,
+          evaluation,
+          clientShared,
+          l1,
+          l2,
+          l3,
+          shortlisted,
+          onHold,
+          rejected,
+          dropped,
           status: String(job.status || 'open')
         }
     })
@@ -547,14 +557,14 @@ export default function RecruitmentDashboard() {
         ? jobRows.filter((j) => String(j.status || 'Open') === 'Open' && j.applicants > 0).length
         : (jobs || []).filter((j: any) => String(j.status || 'Open') === 'Open').length,
       applications: filteredRows.length,
-      positionsFilled: filteredRows.filter((r) => r._status === 'selected').length,
+      positionsFilled: filteredRows.filter((r) => r._status_full === 'Candidate shortlisted').length,
       positionsOnHold: anyFilterActive
         ? jobRows.filter((j) => String(j.status || '').toLowerCase().includes('hold') && j.applicants > 0).length
         : (jobs || []).filter((j: any) => String(j.status || '').toLowerCase().includes('hold')).length
     }
 
     const selectedDurations = filteredRows
-      .filter((r) => r._status === 'selected')
+      .filter((r) => r._status_full === 'Candidate shortlisted')
       .map((r) => {
         const start = toEpoch(r.date || r.created_at)
         const end = toEpoch(r.updated_at)
@@ -609,6 +619,9 @@ export default function RecruitmentDashboard() {
       sourceDataAvailable,
       interviewsScheduled,
       interviewsCompleted,
+      l1Scheduled: filteredRows.filter((r:any)=> r._status_full==='Scheduled for L1 discussion').length,
+      l2Scheduled: filteredRows.filter((r:any)=> r._status_full==='Scheduled for L2 discussion').length,
+      l3Scheduled: filteredRows.filter((r:any)=> r._status_full==='Scheduled for L3 discussion').length,
       upcomingCount: upcomingInterviews.length,
       rescheduled,
       noShows,
@@ -624,8 +637,11 @@ export default function RecruitmentDashboard() {
   }, [filteredRows, jobs, showAllSkills])
 
   const kpis = useMemo(() => {
-    const inPipeline = analytics.statusCounts.progress + analytics.statusCounts.hold
-    const closedOut = analytics.statusCounts.rejected + analytics.statusCounts.dropped
+    const pipelineCount = IN_PIPELINE_STATUSES.reduce((sum, s) => sum + (analytics.statusCounts[s] || 0), 0)
+    const onHold = analytics.statusCounts['On hold'] || 0
+    const rejected = analytics.statusCounts['Rejected'] || 0
+    const dropped = analytics.statusCounts['Dropped Out'] || 0
+    const shortlisted = analytics.statusCounts['Candidate shortlisted'] || 0
 
     const trend = (value: number) => {
       const current = analytics.monthlyTrend[analytics.monthlyTrend.length - 1]?.[1] || 0
@@ -637,9 +653,11 @@ export default function RecruitmentDashboard() {
 
     return {
       total: { value: analytics.total, trend: trend(analytics.total) },
-      selected: { value: analytics.statusCounts.selected, trend: null as string | null },
-      pipeline: { value: inPipeline, trend: null as string | null },
-      closedOut: { value: closedOut, trend: null as string | null }
+      pipeline: { value: pipelineCount, trend: null as string | null },
+      onHold: { value: onHold, trend: null as string | null },
+      rejected: { value: rejected, trend: null as string | null },
+      dropped: { value: dropped, trend: null as string | null },
+      shortlisted: { value: shortlisted, trend: null as string | null }
     }
   }, [analytics])
 
@@ -664,6 +682,50 @@ export default function RecruitmentDashboard() {
   const navigateCandidates = (params: Record<string, string>) => {
     const query = new URLSearchParams(params)
     navigate(`/candidates?${query.toString()}`)
+  }
+
+  const openInCandidates = () => {
+    const params: Record<string, string> = {}
+    // include existing dashboard filters where applicable
+    if (filters.job) params.job = filters.job
+    if (filters.skill) params.skill = filters.skill
+    if (filters.location) params.location = filters.location
+    if (filters.status) params.status = filters.status
+    if (filters.stage) params.stage = filters.stage
+    if (filters.experience) params.exp = filters.experience
+    if (filters.dateFrom) params.dateFrom = filters.dateFrom
+    if (filters.dateTo) params.dateTo = filters.dateTo
+    if (filters.recruiter) params.recruiter = filters.recruiter
+
+    // overlay clicked category should override or augment existing filters
+    if (detailFilter) {
+      const { key, value } = detailFilter
+      if (key === 'status') params.status = value
+      else if (key === 'stage') params.stage = value
+      else if (key === 'skill') params.skill = value
+      else if (key === 'job') params.job = value
+      else if (key === 'recruiter') params.recruiter = value
+      else if (key === 'source') params.search = value
+      else if (key === 'location') params.location = value
+      else if (key === 'month') {
+        // month format is YYYY-MM -> set dateFrom and dateTo for that month
+        const parts = String(value).split('-')
+        if (parts.length === 2) {
+          const y = Number(parts[0])
+          const m = Number(parts[1])
+          if (Number.isFinite(y) && Number.isFinite(m)) {
+            const first = `${String(y)}-${String(m).padStart(2,'0')}-01`
+            const lastDay = new Date(y, m, 0).getDate()
+            const last = `${String(y)}-${String(m).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`
+            params.dateFrom = first
+            params.dateTo = last
+          }
+        }
+      }
+      else if (key === 'experience') params.exp = value
+    }
+
+    navigateCandidates(params)
   }
 
   async function handleExcelFile(file: File) {
@@ -694,8 +756,20 @@ export default function RecruitmentDashboard() {
         setDrawerOpen(false)
         setIsImporting(false)
       } catch (e) {
-        setIsImporting(false)
-        addToast('Import failed', 'error')
+          console.error('Import failed', e)
+          setIsImporting(false)
+          // extract structured error details if available
+          let messages: string[] = []
+          const resp = (e as any)?.response || null
+          if (resp) {
+            if (Array.isArray(resp.rows) && resp.rows.length) messages = resp.rows.map((r: any) => (r.row ? `Row ${r.row}: ${r.error}` : String(r.error || JSON.stringify(r))))
+            else if (resp.error) messages = Array.isArray(resp.error) ? resp.error.map((x:any)=>String(x)) : [String(resp.error)]
+            else messages = [JSON.stringify(resp)]
+          } else {
+            messages = [String((e as any)?.message || 'Import failed')]
+          }
+          setImportErrors(messages)
+          addToast('Import failed', 'error')
       }
     })()
   }
@@ -734,6 +808,50 @@ export default function RecruitmentDashboard() {
     plugins: { legend: { display: false } },
     scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
   }
+
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [detailFilter, setDetailFilter] = useState<{ key: string; value: string; title?: string } | null>(null)
+  const [selectedDetailId, setSelectedDetailId] = useState<string | null>(null)
+
+  const closeDetails = () => {
+    setDetailOpen(false)
+    setDetailFilter(null)
+  }
+
+  const openDetails = (key: string, value: string, title?: string) => {
+    setDetailFilter({ key, value, title })
+    setDetailOpen(true)
+    // selectedDetailId will be set by effect when detailRows is computed
+  }
+
+  const detailRows = useMemo(() => {
+    if (!detailFilter) return []
+    const { key, value } = detailFilter
+    // apply clicked filter on top of already applied dashboard filters (filteredRows)
+    return filteredRows.filter((r: any) => {
+      if (key === 'status') return (r._status_full || r._status || '') === value
+      if (key === 'stage') return (r._funnelStage || '') === value
+      if (key === 'skill') return (r._skills || []).map((s:string)=>String(s).toLowerCase()).includes(String(value).toLowerCase()) || String(r._role || '').toLowerCase() === String(value).toLowerCase()
+      if (key === 'experience') {
+        const bucket = EXPERIENCE_BUCKETS.find((b) => b.key === value)
+        if (!bucket) return false
+        const years = r._years
+        if (years == null) return false
+        return years >= bucket.min && years < bucket.max
+      }
+      if (key === 'job') return String(r._role || r.applied_job_title || r.job_id || r.applied_job_id || '').toLowerCase() === String(value).toLowerCase()
+      if (key === 'recruiter') return String(r._recruiter || '').toLowerCase() === String(value).toLowerCase()
+      if (key === 'source') return String(r._source || '').toLowerCase() === String(value).toLowerCase()
+      if (key === 'location') return String(r._location || '').toLowerCase() === String(value).toLowerCase()
+      if (key === 'month') return String((r._submittedDate || '')).startsWith(String(value))
+      return false
+    })
+  }, [detailFilter, filteredRows])
+
+  React.useEffect(() => {
+    if (!detailOpen) return
+    setSelectedDetailId(detailRows && detailRows.length ? String(detailRows[0].id) : null)
+  }, [detailRows, detailOpen])
 
   return (
     <div className="container">
@@ -796,13 +914,23 @@ export default function RecruitmentDashboard() {
 
           <select value={filters.status} onChange={(e) => handleFilterChange('status', e.target.value)}>
             <option value="">All Statuses</option>
-            {Object.entries(STATUS_LABEL).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            {[
+              'Pre-screening in-progress',
+              'Pre-screening done and submitted for evaluation',
+              'Evaluation in-progress',
+              'Evaluation done and submitted for sharing with client',
+              'Profile shared with client',
+              'Scheduled for L1 discussion',
+              'Scheduled for L2 discussion',
+              'Scheduled for L3 discussion',
+              'Candidate shortlisted',
+              'On hold',
+              'Rejected',
+              'Dropped Out'
+            ].map((lbl) => <option key={lbl} value={lbl}>{lbl}</option>)}
           </select>
 
-          <select value={filters.stage} onChange={(e) => handleFilterChange('stage', e.target.value)}>
-            <option value="">All Stages</option>
-            {STAGE_ORDER.map((stage) => <option key={stage} value={stage}>{STAGE_LABEL[stage]}</option>)}
-          </select>
+          
 
           <button className="btn btn-ghost" onClick={clearFilters}>Clear Filters</button>
         </div>
@@ -813,17 +941,25 @@ export default function RecruitmentDashboard() {
           <div className="kpi-left"><div className="num">{kpis.total.value}</div><div className="label">Total Candidates</div></div>
           <div className="kpi-right">{kpis.total.trend ? `↗ ${kpis.total.trend}` : '📥'}</div>
         </button>
-        <button className="stat-card kpi selected" onClick={() => handleFilterChange('status', 'selected')} title="Filter selected candidates">
-          <div className="kpi-left"><div className="num">{kpis.selected.value}</div><div className="label">Selected</div></div>
-          <div className="kpi-right">✅</div>
-        </button>
-        <button className="stat-card kpi progress" onClick={() => handleFilterChange('status', 'progress')} title="Filter pipeline candidates">
+        <button className="stat-card kpi progress" onClick={() => handleFilterChange('status', 'Pre-screening in-progress')} title="Filter pipeline candidates">
           <div className="kpi-left"><div className="num">{kpis.pipeline.value}</div><div className="label">In Pipeline</div></div>
           <div className="kpi-right">🔄</div>
         </button>
-        <button className="stat-card kpi rejected" onClick={() => handleFilterChange('status', 'rejected')} title="Filter closed out candidates">
-          <div className="kpi-left"><div className="num">{kpis.closedOut.value}</div><div className="label">Closed Out</div></div>
+        <button className="stat-card kpi" onClick={() => handleFilterChange('status', 'On hold')} title="Filter on-hold candidates">
+          <div className="kpi-left"><div className="num">{kpis.onHold.value}</div><div className="label">On Hold</div></div>
+          <div className="kpi-right">⏸️</div>
+        </button>
+        <button className="stat-card kpi rejected" onClick={() => handleFilterChange('status', 'Rejected')} title="Filter rejected candidates">
+          <div className="kpi-left"><div className="num">{kpis.rejected.value}</div><div className="label">Rejected</div></div>
           <div className="kpi-right">❌</div>
+        </button>
+        <button className="stat-card kpi" onClick={() => handleFilterChange('status', 'Dropped Out')} title="Filter dropped out candidates">
+          <div className="kpi-left"><div className="num">{kpis.dropped.value}</div><div className="label">Dropped Out</div></div>
+          <div className="kpi-right">🗑️</div>
+        </button>
+        <button className="stat-card kpi selected" onClick={() => handleFilterChange('status', 'Candidate shortlisted')} title="Filter shortlisted candidates">
+          <div className="kpi-left"><div className="num">{kpis.shortlisted.value}</div><div className="label">Shortlisted</div></div>
+          <div className="kpi-right">✅</div>
         </button>
       </div>
 
@@ -835,7 +971,7 @@ export default function RecruitmentDashboard() {
             <div className="card-header">
               <div><strong>Recruitment Funnel</strong><div className="card-sub">Applications to selected conversion</div></div>
             </div>
-            <div style={{ marginTop: 12, height: 240 }}>
+            <div style={{ marginTop: 12, height: 240, cursor: 'pointer' }}>
               <Bar
                 data={{
                   labels: analytics.conversion.map((x) => STAGE_LABEL[x.stage]),
@@ -847,7 +983,10 @@ export default function RecruitmentDashboard() {
                     if (!els?.length) return
                     const index = els[0].index
                     const stage = analytics.conversion[index]?.stage
-                    if (stage) handleFilterChange('stage', stage)
+                    if (stage) {
+                      handleFilterChange('stage', stage)
+                      openDetails('stage', stage, STAGE_LABEL[stage])
+                    }
                   }
                 }}
               />
@@ -865,25 +1004,51 @@ export default function RecruitmentDashboard() {
             <div className="card-header">
               <div><strong>Status Distribution</strong><div className="card-sub">Click a segment to filter</div></div>
             </div>
-            <div style={{ marginTop: 12, height: 240 }}>
-              <Doughnut
-                data={{
-                  labels: Object.entries(STATUS_LABEL).map(([, label]) => label),
-                  datasets: [{
-                    data: Object.keys(STATUS_LABEL).map((key) => analytics.statusCounts[key as StatusKey]),
-                    backgroundColor: Object.keys(STATUS_LABEL).map((key) => STATUS_COLORS[key as StatusKey])
-                  }]
-                }}
-                options={{
-                  maintainAspectRatio: false,
-                  onClick: (_evt: any, els: any[]) => {
-                    if (!els?.length) return
-                    const status = Object.keys(STATUS_LABEL)[els[0].index]
-                    handleFilterChange('status', String(status || ''))
-                  }
-                }}
-              />
-            </div>
+              <div style={{ marginTop: 12, height: 240, cursor: 'pointer' }}>
+                {/** Use the same display order as CANDIDATE_STATUSES but show short labels on the axis and full labels in tooltips */}
+                <Bar
+                  data={{
+                    labels: CANDIDATE_STATUSES.map((s) => STATUS_SHORT_LABEL[s]),
+                    datasets: [{
+                      label: 'Candidates',
+                      data: CANDIDATE_STATUSES.map((s) => analytics.statusCounts[s] || 0),
+                      backgroundColor: CANDIDATE_STATUSES.map((s) => STATUS_COLORS[s])
+                    }]
+                  }}
+                  options={{
+                    ...chartCommonOptions,
+                    indexAxis: 'y' as const,
+                    scales: {
+                      y: { ticks: { autoSkip: false } },
+                      x: { beginAtZero: true, ticks: { precision: 0 } }
+                    },
+                    plugins: {
+                      legend: { display: false },
+                      tooltip: {
+                        callbacks: {
+                          title: (items: any[]) => {
+                            if (!items || !items.length) return ''
+                            const idx = items[0].dataIndex
+                            return CANDIDATE_STATUSES[idx] || ''
+                          },
+                          label: (context: any) => {
+                            return `Count: ${context.formattedValue}`
+                          }
+                        }
+                      }
+                    },
+                    onClick: (_evt: any, els: any[]) => {
+                      if (!els?.length) return
+                      const idx = els[0].index
+                      const full = CANDIDATE_STATUSES[idx]
+                      if (full) {
+                        handleFilterChange('status', full)
+                        openDetails('status', full, full)
+                      }
+                    }
+                  }}
+                />
+              </div>
           </div>
 
           <div className="chart-card full-width">
@@ -899,7 +1064,7 @@ export default function RecruitmentDashboard() {
               </div>
             </div>
             {analytics.topSkills.length ? (
-              <div style={{ marginTop: 12, height: 280 }}>
+              <div style={{ marginTop: 12, height: 280, cursor: 'pointer' }}>
                 <Bar
                   data={{
                     labels: analytics.topSkills.map(([name]) => name),
@@ -911,7 +1076,10 @@ export default function RecruitmentDashboard() {
                     onClick: (_evt: any, els: any[]) => {
                       if (!els?.length) return
                       const skill = analytics.topSkills[els[0].index]?.[0]
-                      if (skill) handleFilterChange('skill', skill)
+                      if (skill) {
+                        handleFilterChange('skill', skill)
+                        openDetails('skill', skill, skill)
+                      }
                     }
                   }}
                 />
@@ -923,7 +1091,7 @@ export default function RecruitmentDashboard() {
             {filters.skill && selectedSkillBreakdown && (
               <div className="dashboard-inline-list">
                 {Object.entries(selectedSkillBreakdown).map(([status, count]) => (
-                  <span key={status} className="dashboard-inline-pill">{STATUS_LABEL[status as StatusKey]}: {count}</span>
+                  <span key={status} className="dashboard-inline-pill">{(STATUS_SHORT_LABEL as any)[status] || status}: {count}</span>
                 ))}
               </div>
             )}
@@ -933,7 +1101,7 @@ export default function RecruitmentDashboard() {
             <div className="card-header">
               <div><strong>Experience Mix</strong><div className="card-sub">Click a range to filter</div></div>
             </div>
-            <div style={{ marginTop: 12, height: 220 }}>
+            <div style={{ marginTop: 12, height: 220, cursor: 'pointer' }}>
               <Bar
                 data={{
                   labels: EXPERIENCE_BUCKETS.map((b) => b.label),
@@ -944,7 +1112,10 @@ export default function RecruitmentDashboard() {
                   onClick: (_evt: any, els: any[]) => {
                     if (!els?.length) return
                     const bucket = EXPERIENCE_BUCKETS[els[0].index]?.key
-                    if (bucket) handleFilterChange('experience', bucket)
+                    if (bucket) {
+                      handleFilterChange('experience', bucket)
+                      openDetails('experience', bucket, EXPERIENCE_BUCKETS[els[0].index]?.label)
+                    }
                   }
                 }}
               />
@@ -958,7 +1129,7 @@ export default function RecruitmentDashboard() {
             {analytics.sourceDataAvailable ? (
               <div className="dashboard-source-list">
                 {analytics.sources.map((row) => (
-                  <button key={row.source} className="dashboard-source-item" onClick={() => navigateCandidates({ search: row.source })}>
+                  <button key={row.source} className="dashboard-source-item" onClick={() => { openDetails('source', row.source, row.source); }}>
                     <span>{row.source}</span>
                     <span>{row.count} ({row.percent}%) • Selected: {row.selected}</span>
                   </button>
@@ -973,7 +1144,7 @@ export default function RecruitmentDashboard() {
             <div className="card-header">
               <div><strong>Location Coverage</strong><div className="card-sub">Top normalized locations (Unknown tracked separately)</div></div>
             </div>
-            <div style={{ marginTop: 12, height: 240 }}>
+            <div style={{ marginTop: 12, height: 240, cursor: 'pointer' }}>
               <Bar
                 data={{
                   labels: analytics.topLocations.map(([loc]) => loc),
@@ -997,18 +1168,30 @@ export default function RecruitmentDashboard() {
             </div>
             <div className="dashboard-metric-grid">
               <div className="dashboard-metric-item"><span>Scheduled</span><strong>{analytics.interviewsScheduled}</strong></div>
+              <div className="dashboard-metric-item"><span>L1 Scheduled</span><strong>{analytics.l1Scheduled}</strong></div>
+              <div className="dashboard-metric-item"><span>L2 Scheduled</span><strong>{analytics.l2Scheduled}</strong></div>
+              <div className="dashboard-metric-item"><span>L3 Scheduled</span><strong>{analytics.l3Scheduled}</strong></div>
               <div className="dashboard-metric-item"><span>Completed</span><strong>{analytics.interviewsCompleted}</strong></div>
               <div className="dashboard-metric-item"><span>Upcoming</span><strong>{analytics.upcomingCount}</strong></div>
               <div className="dashboard-metric-item"><span>Rescheduled</span><strong>{analytics.rescheduled}</strong></div>
               <div className="dashboard-metric-item"><span>No Shows</span><strong>{analytics.noShows}</strong></div>
             </div>
-            <div style={{ marginTop: 10, height: 140 }}>
+            <div style={{ marginTop: 10, height: 140, cursor: 'pointer' }}>
               <Line
                 data={{
                   labels: analytics.monthlyTrend.map(([month]) => month),
                   datasets: [{ label: 'Candidates', data: analytics.monthlyTrend.map(([, count]) => count), borderColor: '#1E3A8A', backgroundColor: 'rgba(30,58,138,0.18)' }]
                 }}
-                options={{ maintainAspectRatio: false, plugins: { legend: { display: false } } }}
+                options={{
+                  ...chartCommonOptions,
+                  plugins: { legend: { display: false } },
+                  onClick: (_evt: any, els: any[]) => {
+                    if (!els?.length) return
+                    const idx = els[0].index
+                    const month = analytics.monthlyTrend[idx]?.[0]
+                    if (month) openDetails('month', month, month)
+                  }
+                }}
               />
             </div>
           </div>
@@ -1049,23 +1232,47 @@ export default function RecruitmentDashboard() {
               <div className="dashboard-metric-item"><span>On Hold</span><strong>{analytics.jobsOverview.positionsOnHold}</strong></div>
             </div>
             <div className="dashboard-table-wrap">
+              <div style={{ overflowX: 'auto' }}>
               <table className="dashboard-mini-table">
                 <thead>
-                  <tr><th>Job</th><th>Applicants</th><th>Interviews</th><th>Selected</th><th>Status</th></tr>
+                  <tr>
+                    <th>Job</th>
+                    <th>Applicants</th>
+                    <th>Pre-screening</th>
+                    <th>Evaluation</th>
+                    <th>Client Shared</th>
+                    <th>L1</th>
+                    <th>L2</th>
+                    <th>L3</th>
+                    <th>Shortlisted</th>
+                    <th>On Hold</th>
+                    <th>Rejected</th>
+                    <th>Dropped Out</th>
+                    <th>Status</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {analytics.jobRows.slice(0, 6).map((job) => (
-                    <tr key={job.id} onClick={() => navigateCandidates({ job: job.title })}>
+                    <tr key={job.id} onClick={() => { openDetails('job', job.title, job.title) }}>
                       <td>{job.title}</td>
                       <td>{job.applicants}</td>
-                      <td>{job.interviews}</td>
-                      <td>{job.selected}</td>
+                      <td>{job.preScreening}</td>
+                      <td>{job.evaluation}</td>
+                      <td>{job.clientShared}</td>
+                      <td>{job.l1}</td>
+                      <td>{job.l2}</td>
+                      <td>{job.l3}</td>
+                      <td>{job.shortlisted}</td>
+                      <td>{job.onHold}</td>
+                      <td>{job.rejected}</td>
+                      <td>{job.dropped}</td>
                       <td>{job.status}</td>
                     </tr>
                   ))}
-                  {!analytics.jobRows.length && <tr><td colSpan={5}>No jobs available.</td></tr>}
+                  {!analytics.jobRows.length && <tr><td colSpan={13}>No jobs available.</td></tr>}
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
 
@@ -1105,6 +1312,58 @@ export default function RecruitmentDashboard() {
           </div>
         </div>
       )}
+
+      {/* Candidate details modal opened when a graph section is clicked */}
+      <div className={`overlay ${detailOpen ? 'open' : ''}`} onClick={closeDetails} />
+      <div className={`modal ${detailOpen ? 'open' : ''}`} onClick={(e) => e.stopPropagation()}>
+        <div className="drawer-head">
+          <div>
+            <h2 id="drawerTitle">{detailFilter ? `${detailFilter.title || detailFilter.value} Candidates${filters.job ? ' — ' + filters.job : ''}` : 'Candidates'}</h2>
+            <div className="sub">{detailRows.length} matching candidates</div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button className="btn btn-primary" onClick={openInCandidates}>Open in Candidates</button>
+            <button className="drawer-close" onClick={closeDetails}>✕</button>
+          </div>
+        </div>
+        <div className="drawer-body">
+          {detailRows.length ? (
+            <div style={{ width: '100%', maxHeight: '70vh', overflowY: 'auto', paddingRight: 8 }}>
+              {detailRows.map((r: any) => {
+                const id = String(r.id)
+                const selected = selectedDetailId && String(selectedDetailId) === id
+                return (
+                  <div key={id} style={{ marginBottom: 8, borderBottom: '1px solid var(--line)', paddingBottom: 8 }}>
+                    <div id={`summary-${id}`} onClick={() => {
+                      setSelectedDetailId(prev => (prev === id ? null : id))
+                      setTimeout(() => {
+                        const el = document.getElementById(`detail-${id}`) || document.getElementById(`summary-${id}`)
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+                      }, 0)
+                    }} className="dashboard-list-row candidate-summary" style={{ padding: 8, cursor: 'pointer', background: selected ? 'rgba(14,165,233,0.06)' : 'transparent', borderRadius: 6 }}>
+                      <div className="candidate-summary-left">
+                        <strong className="candidate-summary-name">{r.name || r.candidateName || '-'}</strong>
+                        <div className="candidate-summary-role" style={{ fontSize: 13, color: 'var(--muted)' }}>{r._role || r.applied_job_title || '-'}</div>
+                      </div>
+                      <div className="candidate-summary-meta">
+                        <div className="candidate-summary-status" style={{ fontSize: 13 }}>{r._status_full || r._status || '-'}</div>
+                        <div className="candidate-summary-date" style={{ fontSize: 12, color: 'var(--muted)' }}>{r._submittedDate || '-'}</div>
+                      </div>
+                    </div>
+                    <div id={`detail-${id}`} style={{ marginTop: 8 }}>
+                      {selected ? (
+                        <CandidateProfileView candidate={r} jobsMap={jobsMap} />
+                      ) : null}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="drawer-body"><div className="dashboard-empty">No candidates match the selected filters and category.</div></div>
+          )}
+        </div>
+      </div>
 
       <div className={`overlay ${drawerOpen ? 'open' : ''}`} onClick={closeDrawer} />
       <div className={`modal ${drawerOpen ? 'open' : ''}`} onClick={(e) => e.stopPropagation()}>

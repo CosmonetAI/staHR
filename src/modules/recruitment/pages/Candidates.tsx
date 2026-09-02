@@ -230,6 +230,8 @@ const recordsPerPage = 10;
             if (h === 'expected_ctc') return (r.ectc || r.expected_ctc || '')
             if (h === 'current_location') return (r.location || r.current_location || '')
             if (h === 'notice_period') return (r.np || r.notice_period || '')
+            if (h === 'profile_sourcing') return (r.profile_sourcing || r.profile_sourcing_label || '')
+            if (h === 'consultant') return (r.consultant || r.consultant_label || '')
             if (h === 'role') return (r.role || r.job_role || '')
             if (h === 'job_id') return (r.job_id || r.applied_job_id || r.job_ref || '')
             return (r[h] ?? '')
@@ -733,8 +735,44 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
                 else if (meta.inserted > 0) addToast(`Imported ${meta.inserted} candidates`, 'success')
                 else if (meta.updated > 0) addToast(`Updated ${meta.updated} candidates`, 'success')
                 else addToast(`No changes applied`, 'info')
-              } catch (err) {
+              } catch (err: any) {
+                console.error('Import error', err)
+                // Try to extract structured response from the Edge error
+                let messages: string[] = []
+                const resp = err?.response || null
+                if (resp) {
+                  // If response contains row-level errors, format them
+                  if (Array.isArray(resp.rows) && resp.rows.length) {
+                    messages = resp.rows.map((r: any) => (r.row ? `Row ${r.row}: ${r.error}` : String(r.error || JSON.stringify(r))))
+                  } else if (Array.isArray(resp) && resp.length) {
+                    messages = resp.map((r: any) => (typeof r === 'string' ? r : (r.row ? `Row ${r.row}: ${r.error}` : JSON.stringify(r))))
+                  } else if (resp.error) {
+                    if (Array.isArray(resp.error)) messages = resp.error.map((e: any) => (typeof e === 'string' ? e : JSON.stringify(e)))
+                    else if (typeof resp.error === 'string') messages = [resp.error]
+                    else messages = [JSON.stringify(resp.error)]
+                  } else {
+                    messages = [JSON.stringify(resp)]
+                  }
+                } else {
+                  // Try to parse JSON from message text (older edge responses)
+                  try {
+                    const m = String(err?.message || '')
+                    const withoutPrefix = m.replace(/^Edge call failed:\s*/i, '')
+                    const parsed = JSON.parse(withoutPrefix)
+                    if (parsed) {
+                      if (parsed.rows) messages = (parsed.rows as any[]).map((r: any) => (r.row ? `Row ${r.row}: ${r.error}` : String(r.error || JSON.stringify(r))))
+                      else if (parsed.error) messages = [typeof parsed.error === 'string' ? parsed.error : JSON.stringify(parsed.error)]
+                    }
+                  } catch (_e) {
+                    // fallback to raw message
+                    messages = [String(err?.message || err || 'Import failed')]
+                  }
+                }
+                setImportErrors(messages)
                 addToast('Import failed', 'error')
+                setIsImporting(false)
+                // keep upload modal open so user can inspect errors
+                return
               }
               setIsImporting(false)
               setShowUpload(false)

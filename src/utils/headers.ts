@@ -16,6 +16,8 @@ export const CANDIDATE_HEADERS = [
   'selstatus',
   'remarks',
   'interview_slot',
+  'profile_sourcing',
+  'consultant',
   'confirmed_availability',
   'f2f'
 ]
@@ -46,6 +48,7 @@ const LABEL_OVERRIDES: Record<string, string> = {
   interview_slot: 'Interview slot given by client',
   confirmed_availability: 'Candidates confirmed availability',
   f2f: 'F2F interview availability'
+  ,consultant: 'Consultant Name'
 }
 
 export const CANDIDATE_HEADER_LABELS = CANDIDATE_HEADERS.map(h => LABEL_OVERRIDES[h] || toTitle(h))
