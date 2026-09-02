@@ -18,10 +18,17 @@ import { CandidateService } from '../services/candidateService'
 import { useToast } from '../../../components/ToastProvider'
 import { useRecruitmentDashboard } from '../hooks/useRecruitmentDashboard'
 import '../../../styles/staHR.css'
+import {
+  CANDIDATE_STATUSES,
+  STATUS_SHORT_LABEL,
+  STATUS_COLORS,
+  FUNNEL_STAGES,
+  IN_PIPELINE_STATUSES,
+  CLOSED_OUT_STATUSES,
+  statusToFunnelKey
+} from '../constants/statuses'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, PointElement, LineElement, Tooltip, Legend)
-
-type StatusKey = 'selected' | 'rejected' | 'hold' | 'progress' | 'dropped'
 
 type DashboardFilters = {
   dateFrom: string
@@ -52,32 +59,8 @@ type ActivityItem = {
   detail: string
   timestamp: number
 }
-
-const STATUS_LABEL: Record<StatusKey, string> = {
-  selected: 'Selected',
-  rejected: 'Rejected',
-  hold: 'On Hold',
-  progress: 'In Progress',
-  dropped: 'Dropped'
-}
-
-const STATUS_COLORS: Record<StatusKey, string> = {
-  selected: '#22C55E',
-  rejected: '#EF4444',
-  hold: '#38BDF8',
-  progress: '#F59E0B',
-  dropped: '#64748B'
-}
-
-const STAGE_ORDER = ['applications', 'screening', 'shortlisted', 'interview', 'final_round', 'selected'] as const
-const STAGE_LABEL: Record<(typeof STAGE_ORDER)[number], string> = {
-  applications: 'Applications',
-  screening: 'Screening',
-  shortlisted: 'Shortlisted',
-  interview: 'Interview',
-  final_round: 'Final Round',
-  selected: 'Selected'
-}
+const STAGE_ORDER = FUNNEL_STAGES.map((s) => s.key)
+const STAGE_LABEL: Record<string, string> = FUNNEL_STAGES.reduce((acc, s) => ({ ...acc, [s.key]: s.label }), {} as Record<string, string>)
 
 const EXPERIENCE_BUCKETS = [
   { key: '0-2', min: 0, max: 2, label: '0-2 years' },
@@ -86,15 +69,6 @@ const EXPERIENCE_BUCKETS = [
   { key: '8-12', min: 8, max: 12, label: '8-12 years' },
   { key: '12+', min: 12, max: Number.POSITIVE_INFINITY, label: '12+ years' }
 ]
-
-function normalizedStatus(raw: any): StatusKey {
-  const value = String(raw || '').toLowerCase()
-  if (value.includes('select') || value.includes('offer')) return 'selected'
-  if (value.includes('reject')) return 'rejected'
-  if (value.includes('hold')) return 'hold'
-  if (value.includes('drop')) return 'dropped'
-  return 'progress'
-}
 
 function getFullStatusLabel(status: any) {
   const raw = String(status || '').trim()
@@ -187,17 +161,7 @@ function inferSource(row: Record<string, any>): string {
   return 'Other'
 }
 
-function inferStage(row: Record<string, any>): (typeof STAGE_ORDER)[number] {
-  const status = normalizedStatus(row.selstatus)
-  const intStatus = String(row.intstatus || '').toLowerCase()
-  if (status === 'selected') return 'selected'
-  if (intStatus.includes('final')) return 'final_round'
-  if (intStatus.includes('interview') || row.interview_slot || row.confirmed_availability || row.f2f) return 'interview'
-  if (intStatus.includes('shortlist')) return 'shortlisted'
-  if (intStatus.includes('screen')) return 'screening'
-  if (status === 'hold') return 'screening'
-  return 'applications'
-}
+// inferStage removed — funnel stage mapping is handled by statusToFunnelKey in constants
 
 function getRecruiter(row: Record<string, any>): string {
   return String(row.recruiter || row.recruiter_name || row.owner || '').trim()
@@ -318,11 +282,11 @@ export default function RecruitmentDashboard() {
       const role = String(row.role || row.job_role || row.applied_job_title || '').trim()
       const locationName = normalizeLocation(row.location || row.current_location)
       const skills = splitSkills(row)
-      const stage = inferStage(row)
       const recruiter = getRecruiter(row)
       const source = inferSource(row)
-      const status = normalizedStatus(row.selstatus)
       const statusFull = getFullStatusLabel(row.selstatus)
+      const statusKey = statusToFunnelKey(statusFull)
+      const stage = statusKey || statusToFunnelKey(statusFull)
       const years = parseYears(row.exp ?? row.experience)
       const interviewTs = [row.confirmed_availability, row.interview_slot, row.f2f]
         .map((v) => toEpoch(v))
@@ -339,8 +303,9 @@ export default function RecruitmentDashboard() {
         _stage: stage,
         _recruiter: recruiter,
         _source: source,
-        _status: status,
+        _status: statusFull,
         _status_full: statusFull,
+        _funnelStage: statusKey,
         _years: years,
         _interviewTs: interviewTs,
         _submittedDate: submittedDate
@@ -378,7 +343,7 @@ export default function RecruitmentDashboard() {
       }
       if (filters.location && row._location !== filters.location) return false
       if (filters.status && row._status_full !== filters.status) return false
-      if (filters.stage && row._stage !== filters.stage) return false
+      if (filters.stage && row._funnelStage !== filters.stage) return false
       if (filters.experience) {
         const bucket = EXPERIENCE_BUCKETS.find((b) => b.key === filters.experience)
         if (!bucket) return false
@@ -391,26 +356,20 @@ export default function RecruitmentDashboard() {
 
   const selectedSkillBreakdown = useMemo(() => {
     if (!filters.skill) return null
-    const counts: Record<StatusKey, number> = { selected: 0, rejected: 0, hold: 0, progress: 0, dropped: 0 }
+    const counts: Record<string, number> = CANDIDATE_STATUSES.reduce((acc, s) => ({ ...acc, [s]: 0 }), {} as Record<string, number>)
     filteredRows.forEach((row: any) => {
-      counts[row._status as StatusKey] += 1
+      const k = row._status_full || row._status
+      counts[k] = (counts[k] || 0) + 1
     })
     return counts
   }, [filteredRows, filters.skill])
 
   const analytics = useMemo(() => {
     const total = filteredRows.length
-    const statusCounts: Record<StatusKey, number> = { selected: 0, rejected: 0, hold: 0, progress: 0, dropped: 0 }
+    const statusCounts: Record<string, number> = CANDIDATE_STATUSES.reduce((acc, s) => ({ ...acc, [s]: 0 }), {} as Record<string, number>)
     const expCounts: Record<string, number> = { '0-2': 0, '2-5': 0, '5-8': 0, '8-12': 0, '12+': 0 }
     const locCounts: Record<string, number> = {}
-    const stageCounts: Record<(typeof STAGE_ORDER)[number], number> = {
-      applications: 0,
-      screening: 0,
-      shortlisted: 0,
-      interview: 0,
-      final_round: 0,
-      selected: 0
-    }
+    const stageCounts: Record<string, number> = FUNNEL_STAGES.reduce((acc, s) => ({ ...acc, [s.key]: 0 }), {} as Record<string, number>)
     const sourceCounts: Record<string, number> = {}
     const sourceSelectedCounts: Record<string, number> = {}
     const skillsCounts: Record<string, number> = {}
@@ -423,7 +382,10 @@ export default function RecruitmentDashboard() {
     })
 
     filteredRows.forEach((row) => {
-      statusCounts[row._status as StatusKey] += 1
+      const statusKey = row._status_full || row._status
+      statusCounts[statusKey] = (statusCounts[statusKey] || 0) + 1
+      const funnelKey = row._funnelStage || statusToFunnelKey(statusKey)
+      if (funnelKey && funnelKey !== 'applications') stageCounts[funnelKey] = (stageCounts[funnelKey] || 0) + 1
       if (row._years != null) {
         if (row._years < 2) expCounts['0-2'] += 1
         else if (row._years < 5) expCounts['2-5'] += 1
@@ -433,7 +395,7 @@ export default function RecruitmentDashboard() {
       }
 
       locCounts[row._location] = (locCounts[row._location] || 0) + 1
-      stageCounts[row._stage as (typeof STAGE_ORDER)[number]] += 1
+      // legacy _stage is ignored for funnel; we use _funnelStage computed above
 
       if (row._source) {
         sourceCounts[row._source] = (sourceCounts[row._source] || 0) + 1
@@ -487,7 +449,7 @@ export default function RecruitmentDashboard() {
           jobTitle: String(r._role || '-'),
           round: String(r.round || r.interview_round || r.intstatus || 'Interview'),
           interviewer: String(r.interviewer || r.interviewer_name || '-'),
-          status: STATUS_LABEL[r._status as StatusKey] || 'In Progress',
+          status: String(r._status_full || r._status || ''),
           timestamp: confirmedTs,
           whenLabel: formatDateTime(confirmedTs)
         }
@@ -514,7 +476,7 @@ export default function RecruitmentDashboard() {
         if (updatedAt && (!createdAt || updatedAt !== createdAt)) {
           entries.push({
             id: `${r.id}-updated`,
-            label: `Status: ${STATUS_LABEL[r._status as StatusKey]}`,
+            label: `Status: ${r._status_full || r._status}`,
             detail: `${r.name || 'Candidate'} updated`,
             timestamp: updatedAt
           })
@@ -537,8 +499,8 @@ export default function RecruitmentDashboard() {
     const sourceDataAvailable = sources.length > 0
 
     const conversion = STAGE_ORDER.map((stage, idx) => {
-      const count = stageCounts[stage] || 0
-      const prev = idx === 0 ? count : stageCounts[STAGE_ORDER[idx - 1]] || 0
+      const count = stage === 'applications' ? total : stageCounts[stage] || 0
+      const prev = idx === 0 ? count : (stage === 'applications' ? total : stageCounts[STAGE_ORDER[idx - 1]] || 0)
       const rate = idx === 0 || prev === 0 ? null : Math.round((count / prev) * 100)
       return { stage, count, rate }
     })
@@ -558,14 +520,32 @@ export default function RecruitmentDashboard() {
       })
 
       const interviews = related.filter((r) => !!(r.interview_slot || r.confirmed_availability || r.f2f)).length
-      const selected = related.filter((r) => r._status === 'selected').length
+      const preScreening = related.filter((r) => ['Pre-screening in-progress','Pre-screening done and submitted for evaluation'].includes(r._status_full)).length
+      const evaluation = related.filter((r) => ['Evaluation in-progress','Evaluation done and submitted for sharing with client'].includes(r._status_full)).length
+      const clientShared = related.filter((r) => r._status_full === 'Profile shared with client').length
+      const l1 = related.filter((r) => r._status_full === 'Scheduled for L1 discussion').length
+      const l2 = related.filter((r) => r._status_full === 'Scheduled for L2 discussion').length
+      const l3 = related.filter((r) => r._status_full === 'Scheduled for L3 discussion').length
+      const shortlisted = related.filter((r) => r._status_full === 'Candidate shortlisted').length
+      const onHold = related.filter((r) => r._status_full === 'On hold').length
+      const rejected = related.filter((r) => r._status_full === 'Rejected').length
+      const dropped = related.filter((r) => r._status_full === 'Dropped Out').length
 
       return {
           id: String(job.id || job.job_id || job.title),
           title: String(job.title || 'Untitled Job'),
           applicants: related.length,
           interviews,
-          selected,
+          preScreening,
+          evaluation,
+          clientShared,
+          l1,
+          l2,
+          l3,
+          shortlisted,
+          onHold,
+          rejected,
+          dropped,
           status: String(job.status || 'open')
         }
     })
@@ -576,14 +556,14 @@ export default function RecruitmentDashboard() {
         ? jobRows.filter((j) => String(j.status || 'Open') === 'Open' && j.applicants > 0).length
         : (jobs || []).filter((j: any) => String(j.status || 'Open') === 'Open').length,
       applications: filteredRows.length,
-      positionsFilled: filteredRows.filter((r) => r._status === 'selected').length,
+      positionsFilled: filteredRows.filter((r) => r._status_full === 'Candidate shortlisted').length,
       positionsOnHold: anyFilterActive
         ? jobRows.filter((j) => String(j.status || '').toLowerCase().includes('hold') && j.applicants > 0).length
         : (jobs || []).filter((j: any) => String(j.status || '').toLowerCase().includes('hold')).length
     }
 
     const selectedDurations = filteredRows
-      .filter((r) => r._status === 'selected')
+      .filter((r) => r._status_full === 'Candidate shortlisted')
       .map((r) => {
         const start = toEpoch(r.date || r.created_at)
         const end = toEpoch(r.updated_at)
@@ -638,6 +618,9 @@ export default function RecruitmentDashboard() {
       sourceDataAvailable,
       interviewsScheduled,
       interviewsCompleted,
+      l1Scheduled: filteredRows.filter((r:any)=> r._status_full==='Scheduled for L1 discussion').length,
+      l2Scheduled: filteredRows.filter((r:any)=> r._status_full==='Scheduled for L2 discussion').length,
+      l3Scheduled: filteredRows.filter((r:any)=> r._status_full==='Scheduled for L3 discussion').length,
       upcomingCount: upcomingInterviews.length,
       rescheduled,
       noShows,
@@ -653,8 +636,11 @@ export default function RecruitmentDashboard() {
   }, [filteredRows, jobs, showAllSkills])
 
   const kpis = useMemo(() => {
-    const inPipeline = analytics.statusCounts.progress + analytics.statusCounts.hold
-    const closedOut = analytics.statusCounts.rejected + analytics.statusCounts.dropped
+    const pipelineCount = IN_PIPELINE_STATUSES.reduce((sum, s) => sum + (analytics.statusCounts[s] || 0), 0)
+    const onHold = analytics.statusCounts['On hold'] || 0
+    const rejected = analytics.statusCounts['Rejected'] || 0
+    const dropped = analytics.statusCounts['Dropped Out'] || 0
+    const shortlisted = analytics.statusCounts['Candidate shortlisted'] || 0
 
     const trend = (value: number) => {
       const current = analytics.monthlyTrend[analytics.monthlyTrend.length - 1]?.[1] || 0
@@ -666,9 +652,11 @@ export default function RecruitmentDashboard() {
 
     return {
       total: { value: analytics.total, trend: trend(analytics.total) },
-      selected: { value: analytics.statusCounts.selected, trend: null as string | null },
-      pipeline: { value: inPipeline, trend: null as string | null },
-      closedOut: { value: closedOut, trend: null as string | null }
+      pipeline: { value: pipelineCount, trend: null as string | null },
+      onHold: { value: onHold, trend: null as string | null },
+      rejected: { value: rejected, trend: null as string | null },
+      dropped: { value: dropped, trend: null as string | null },
+      shortlisted: { value: shortlisted, trend: null as string | null }
     }
   }, [analytics])
 
@@ -852,17 +840,25 @@ export default function RecruitmentDashboard() {
           <div className="kpi-left"><div className="num">{kpis.total.value}</div><div className="label">Total Candidates</div></div>
           <div className="kpi-right">{kpis.total.trend ? `↗ ${kpis.total.trend}` : '📥'}</div>
         </button>
-        <button className="stat-card kpi selected" onClick={() => handleFilterChange('status', 'Candidate shortlisted')} title="Filter selected candidates">
-          <div className="kpi-left"><div className="num">{kpis.selected.value}</div><div className="label">Selected</div></div>
-          <div className="kpi-right">✅</div>
-        </button>
         <button className="stat-card kpi progress" onClick={() => handleFilterChange('status', 'Pre-screening in-progress')} title="Filter pipeline candidates">
           <div className="kpi-left"><div className="num">{kpis.pipeline.value}</div><div className="label">In Pipeline</div></div>
           <div className="kpi-right">🔄</div>
         </button>
-        <button className="stat-card kpi rejected" onClick={() => handleFilterChange('status', 'Rejected')} title="Filter closed out candidates">
-          <div className="kpi-left"><div className="num">{kpis.closedOut.value}</div><div className="label">Closed Out</div></div>
+        <button className="stat-card kpi" onClick={() => handleFilterChange('status', 'On hold')} title="Filter on-hold candidates">
+          <div className="kpi-left"><div className="num">{kpis.onHold.value}</div><div className="label">On Hold</div></div>
+          <div className="kpi-right">⏸️</div>
+        </button>
+        <button className="stat-card kpi rejected" onClick={() => handleFilterChange('status', 'Rejected')} title="Filter rejected candidates">
+          <div className="kpi-left"><div className="num">{kpis.rejected.value}</div><div className="label">Rejected</div></div>
           <div className="kpi-right">❌</div>
+        </button>
+        <button className="stat-card kpi" onClick={() => handleFilterChange('status', 'Dropped Out')} title="Filter dropped out candidates">
+          <div className="kpi-left"><div className="num">{kpis.dropped.value}</div><div className="label">Dropped Out</div></div>
+          <div className="kpi-right">🗑️</div>
+        </button>
+        <button className="stat-card kpi selected" onClick={() => handleFilterChange('status', 'Candidate shortlisted')} title="Filter shortlisted candidates">
+          <div className="kpi-left"><div className="num">{kpis.shortlisted.value}</div><div className="label">Shortlisted</div></div>
+          <div className="kpi-right">✅</div>
         </button>
       </div>
 
@@ -904,33 +900,48 @@ export default function RecruitmentDashboard() {
             <div className="card-header">
               <div><strong>Status Distribution</strong><div className="card-sub">Click a segment to filter</div></div>
             </div>
-            <div style={{ marginTop: 12, height: 240 }}>
-              <Doughnut
-                data={{
-                  labels: Object.entries(STATUS_LABEL).map(([, label]) => label),
-                  datasets: [{
-                    data: Object.keys(STATUS_LABEL).map((key) => analytics.statusCounts[key as StatusKey]),
-                    backgroundColor: Object.keys(STATUS_LABEL).map((key) => STATUS_COLORS[key as StatusKey])
-                  }]
-                }}
-                options={{
-                  maintainAspectRatio: false,
-                  onClick: (_evt: any, els: any[]) => {
-                    if (!els?.length) return
-                    const keys = Object.keys(STATUS_LABEL)
-                    const key = keys[els[0].index]
-                    const MAP_FULL: Record<string,string> = {
-                      selected: 'Candidate shortlisted',
-                      progress: 'Pre-screening in-progress',
-                      hold: 'On hold',
-                      rejected: 'Rejected',
-                      dropped: 'Dropped Out'
+              <div style={{ marginTop: 12, height: 240 }}>
+                {/** Use the same display order as CANDIDATE_STATUSES but show short labels on the axis and full labels in tooltips */}
+                <Bar
+                  data={{
+                    labels: CANDIDATE_STATUSES.map((s) => STATUS_SHORT_LABEL[s]),
+                    datasets: [{
+                      label: 'Candidates',
+                      data: CANDIDATE_STATUSES.map((s) => analytics.statusCounts[s] || 0),
+                      backgroundColor: CANDIDATE_STATUSES.map((s) => STATUS_COLORS[s])
+                    }]
+                  }}
+                  options={{
+                    ...chartCommonOptions,
+                    indexAxis: 'y' as const,
+                    scales: {
+                      y: { ticks: { autoSkip: false } },
+                      x: { beginAtZero: true, ticks: { precision: 0 } }
+                    },
+                    plugins: {
+                      legend: { display: false },
+                      tooltip: {
+                        callbacks: {
+                          title: (items: any[]) => {
+                            if (!items || !items.length) return ''
+                            const idx = items[0].dataIndex
+                            return CANDIDATE_STATUSES[idx] || ''
+                          },
+                          label: (context: any) => {
+                            return `Count: ${context.formattedValue}`
+                          }
+                        }
+                      }
+                    },
+                    onClick: (_evt: any, els: any[]) => {
+                      if (!els?.length) return
+                      const idx = els[0].index
+                      const full = CANDIDATE_STATUSES[idx]
+                      if (full) handleFilterChange('status', full)
                     }
-                    handleFilterChange('status', String(MAP_FULL[key] || ''))
-                  }
-                }}
-              />
-            </div>
+                  }}
+                />
+              </div>
           </div>
 
           <div className="chart-card full-width">
@@ -970,7 +981,7 @@ export default function RecruitmentDashboard() {
             {filters.skill && selectedSkillBreakdown && (
               <div className="dashboard-inline-list">
                 {Object.entries(selectedSkillBreakdown).map(([status, count]) => (
-                  <span key={status} className="dashboard-inline-pill">{STATUS_LABEL[status as StatusKey]}: {count}</span>
+                  <span key={status} className="dashboard-inline-pill">{(STATUS_SHORT_LABEL as any)[status] || status}: {count}</span>
                 ))}
               </div>
             )}
@@ -1044,6 +1055,9 @@ export default function RecruitmentDashboard() {
             </div>
             <div className="dashboard-metric-grid">
               <div className="dashboard-metric-item"><span>Scheduled</span><strong>{analytics.interviewsScheduled}</strong></div>
+              <div className="dashboard-metric-item"><span>L1 Scheduled</span><strong>{analytics.l1Scheduled}</strong></div>
+              <div className="dashboard-metric-item"><span>L2 Scheduled</span><strong>{analytics.l2Scheduled}</strong></div>
+              <div className="dashboard-metric-item"><span>L3 Scheduled</span><strong>{analytics.l3Scheduled}</strong></div>
               <div className="dashboard-metric-item"><span>Completed</span><strong>{analytics.interviewsCompleted}</strong></div>
               <div className="dashboard-metric-item"><span>Upcoming</span><strong>{analytics.upcomingCount}</strong></div>
               <div className="dashboard-metric-item"><span>Rescheduled</span><strong>{analytics.rescheduled}</strong></div>
@@ -1096,23 +1110,47 @@ export default function RecruitmentDashboard() {
               <div className="dashboard-metric-item"><span>On Hold</span><strong>{analytics.jobsOverview.positionsOnHold}</strong></div>
             </div>
             <div className="dashboard-table-wrap">
+              <div style={{ overflowX: 'auto' }}>
               <table className="dashboard-mini-table">
                 <thead>
-                  <tr><th>Job</th><th>Applicants</th><th>Interviews</th><th>Selected</th><th>Status</th></tr>
+                  <tr>
+                    <th>Job</th>
+                    <th>Applicants</th>
+                    <th>Pre-screening</th>
+                    <th>Evaluation</th>
+                    <th>Client Shared</th>
+                    <th>L1</th>
+                    <th>L2</th>
+                    <th>L3</th>
+                    <th>Shortlisted</th>
+                    <th>On Hold</th>
+                    <th>Rejected</th>
+                    <th>Dropped Out</th>
+                    <th>Status</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {analytics.jobRows.slice(0, 6).map((job) => (
                     <tr key={job.id} onClick={() => navigateCandidates({ job: job.title })}>
                       <td>{job.title}</td>
                       <td>{job.applicants}</td>
-                      <td>{job.interviews}</td>
-                      <td>{job.selected}</td>
+                      <td>{job.preScreening}</td>
+                      <td>{job.evaluation}</td>
+                      <td>{job.clientShared}</td>
+                      <td>{job.l1}</td>
+                      <td>{job.l2}</td>
+                      <td>{job.l3}</td>
+                      <td>{job.shortlisted}</td>
+                      <td>{job.onHold}</td>
+                      <td>{job.rejected}</td>
+                      <td>{job.dropped}</td>
                       <td>{job.status}</td>
                     </tr>
                   ))}
-                  {!analytics.jobRows.length && <tr><td colSpan={5}>No jobs available.</td></tr>}
+                  {!analytics.jobRows.length && <tr><td colSpan={13}>No jobs available.</td></tr>}
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
 
