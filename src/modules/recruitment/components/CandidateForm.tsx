@@ -6,6 +6,7 @@ import { supabase } from '../../../supabase/supabaseClient'
 import { useAuth } from '../../../hooks/useAuth'
 import { CandidateService } from '../services/candidateService'
 import { useToast } from '../../../components/ToastProvider'
+import { LookupService } from '../services/lookupService'
 
 type Props = {
   form: any
@@ -35,6 +36,8 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
   const [resumeUrl, setResumeUrl] = React.useState<string>(() => String(form.resume_url || form.resume || ''))
   const [newClientFeedback, setNewClientFeedback] = React.useState('')
   const addToast = useToast()
+  const [profileSourcingOptions, setProfileSourcingOptions] = React.useState<any[]>([])
+  const [consultantOptions, setConsultantOptions] = React.useState<any[]>([])
 
   const clearError = (field: string) => {
     setErrors(prev => {
@@ -50,6 +53,22 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
       try {
         const list = await JobService.list()
         if (mounted) setJobs(list || [])
+      } catch (e) {
+        // ignore
+      }
+    })()
+    return () => { mounted = false }
+  }, [])
+
+  React.useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const ps = await LookupService.listProfileSourcing()
+        const cs = await LookupService.listConsultants()
+        if (!mounted) return
+        setProfileSourcingOptions(ps || [])
+        setConsultantOptions(cs || [])
       } catch (e) {
         // ignore
       }
@@ -94,6 +113,8 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
     else if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(form.email))) e.email = 'Invalid email'
     if (!form.date || !String(form.date).trim()) e.date = 'Date is required'
     if (!form.applied_job_id || !String(form.applied_job_id).trim()) e.applied_job_id = 'Assigning to a job is required'
+    // Profile Sourcing is optional. Consultant is required only when Profile Sourcing is Consultant.
+    if ((String(form.profile_sourcing || '').toLowerCase() === 'consultant' || String(profileSourcingOptions.find(p=>p.id===form.profile_sourcing_id)?.name || '').toLowerCase() === 'consultant') && (!form.consultant_id && !form.consultant)) e.consultant = 'Consultant is required when Profile Sourcing is Consultant'
     if (form.phone) {
       const p = String(form.phone).replace(/[^0-9]/g, '')
       if (!/^[0-9]{7,15}$/.test(p)) e.phone = 'Phone should be 7-15 digits'
@@ -170,6 +191,14 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
           }
         }
 
+        // Ensure consultant fields are only present when profile sourcing is Consultant
+        try {
+          const psName = String(updatedForm.profile_sourcing || profileSourcingOptions.find(p=>p.id===updatedForm.profile_sourcing_id)?.name || '').toLowerCase()
+          if (psName !== 'consultant') {
+            updatedForm.consultant = null
+            updatedForm.consultant_id = null
+          }
+        } catch (e) {}
         setForm(updatedForm)
         onSave(updatedForm)
         setNewRemark('')
@@ -312,6 +341,38 @@ export default function CandidateForm({ form, setForm, importPreview, importErro
         <div className="field">
           <label>LinkedIn profile</label>
           <input value={form.linkedin || ''} onChange={(e) => setForm({ ...form, linkedin: e.target.value })} placeholder="https://linkedin.com/in/…" />
+        </div>
+
+        <div className="field-row">
+          <div className="field">
+            <label>Profile Sourcing</label>
+            <select value={form.profile_sourcing_id || form.profile_sourcing || ''} onChange={(e) => {
+              const val = e.target.value
+              const found = profileSourcingOptions.find(p => String(p.id) === val) || profileSourcingOptions.find(p => String(p.name) === val)
+              if (found) setForm({ ...form, profile_sourcing_id: found.id, profile_sourcing: found.name })
+              else setForm({ ...form, profile_sourcing_id: '', profile_sourcing: '' })
+              clearError('profile_sourcing')
+            }}>
+              <option value="">— select —</option>
+              {profileSourcingOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            {errors.profile_sourcing && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{errors.profile_sourcing}</div>}
+          </div>
+
+          <div className="field" style={{ display: (String(form.profile_sourcing || '').toLowerCase() === 'consultant' || String(profileSourcingOptions.find(p=>p.id===form.profile_sourcing_id)?.name || '').toLowerCase() === 'consultant') ? 'block' : 'none' }}>
+            <label>Consultant {String(form.profile_sourcing || '').toLowerCase() === 'consultant' ? '*' : ''}</label>
+            <select value={form.consultant_id || form.consultant || ''} onChange={(e) => {
+              const val = e.target.value
+              const found = consultantOptions.find(c => String(c.id) === val) || consultantOptions.find(c => String(c.name) === val)
+              if (found) setForm({ ...form, consultant_id: found.id, consultant: found.name })
+              else setForm({ ...form, consultant_id: '', consultant: '' })
+              clearError('consultant')
+            }}>
+              <option value="">— select —</option>
+              {consultantOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            {errors.consultant && <div style={{ color: 'var(--status-rejected)', marginTop: 6 }}>{errors.consultant}</div>}
+          </div>
         </div>
 
         <div className="field">

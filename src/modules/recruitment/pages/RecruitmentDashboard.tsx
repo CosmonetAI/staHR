@@ -756,8 +756,20 @@ export default function RecruitmentDashboard() {
         setDrawerOpen(false)
         setIsImporting(false)
       } catch (e) {
-        setIsImporting(false)
-        addToast('Import failed', 'error')
+          console.error('Import failed', e)
+          setIsImporting(false)
+          // extract structured error details if available
+          let messages: string[] = []
+          const resp = (e as any)?.response || null
+          if (resp) {
+            if (Array.isArray(resp.rows) && resp.rows.length) messages = resp.rows.map((r: any) => (r.row ? `Row ${r.row}: ${r.error}` : String(r.error || JSON.stringify(r))))
+            else if (resp.error) messages = Array.isArray(resp.error) ? resp.error.map((x:any)=>String(x)) : [String(resp.error)]
+            else messages = [JSON.stringify(resp)]
+          } else {
+            messages = [String((e as any)?.message || 'Import failed')]
+          }
+          setImportErrors(messages)
+          addToast('Import failed', 'error')
       }
     })()
   }
