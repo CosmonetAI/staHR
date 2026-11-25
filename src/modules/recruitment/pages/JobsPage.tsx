@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { FaThLarge, FaList, FaPaperPlane, FaUsers, FaInfoCircle, FaPen, FaTrashAlt } from 'react-icons/fa'
+import { FaThLarge, FaList, FaPaperPlane, FaUsers, FaInfoCircle, FaPen, FaTrashAlt, FaFileExcel } from 'react-icons/fa'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useToast } from '../../../components/ToastProvider'
@@ -9,6 +9,7 @@ import { useAuth } from '../../../hooks/useAuth'
 import ClientService from '../services/clientService'
 import JobDescriptionUploader from '../../../components/JobDescriptionUploader/JobDescriptionUploader'
 import { ParsedJobDescription } from '../../../types/job'
+import { exportRecordsToExcel } from '../../../utils/excelUtils'
 
 export default function JobsPage() {
   const { user, isClient } = useAuth()
@@ -303,11 +304,28 @@ export default function JobsPage() {
     })
   }, [jobs, search, clientFilter, statusFilter, clientsMap, postedStart, postedEnd])
 
+  function exportJobs() {
+    if (!filteredJobs.length) {
+      addToast('There are no jobs to export', 'error', 2000)
+      return
+    }
+    const rows = filteredJobs.map((job: any) => ({
+      ...job,
+      client_name: clientsMap[String(job.client_id || job.client_name || '')] || job.client_name || '',
+      application_count: applicationCount(job)
+    }))
+    exportRecordsToExcel(rows, `jobs-${new Date().toISOString().slice(0, 10)}.xlsx`, 'Jobs')
+    addToast(`${filteredJobs.length} job${filteredJobs.length === 1 ? '' : 's'} exported`, 'success', 2000)
+  }
+
   return (
     <div className="container">
       <div className="jobs-page-head">
         <h2>Jobs</h2>
-        {!isClient && <button className="btn btn-primary" onClick={openNewJob}>+ Add Job</button>}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-ghost" onClick={exportJobs}><FaFileExcel /> Export Excel</button>
+          {!isClient && <button className="btn btn-primary" onClick={openNewJob}>+ Add Job</button>}
+        </div>
       </div>
 
       <div className="toolbar candidates-toolbar" style={{ marginTop: 12, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
