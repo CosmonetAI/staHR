@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react'
-import { FaThLarge, FaList, FaPen, FaTrashAlt } from 'react-icons/fa'
+import { FaThLarge, FaList, FaPen, FaTrashAlt, FaFileExcel } from 'react-icons/fa'
 import { useAuth } from '../../../hooks/useAuth'
 import ClientService from '../services/clientService'
 import { useToast } from '../../../components/ToastProvider'
+import { exportRecordsToExcel } from '../../../utils/excelUtils'
 
 export default function ClientsPage() {
   const { user, isClient } = useAuth()
@@ -122,13 +123,23 @@ async function save() {
     } catch (e: any) { addToast('Delete failed: ' + (e?.message || String(e)), 'error') }
   }
 
+  function exportClients() {
+    if (!filteredClients.length) {
+      addToast('There are no clients to export', 'error', 2000)
+      return
+    }
+    exportRecordsToExcel(filteredClients, `clients-${new Date().toISOString().slice(0, 10)}.xlsx`, 'Clients')
+    addToast(`${filteredClients.length} client${filteredClients.length === 1 ? '' : 's'} exported`, 'success', 2000)
+  }
+
   return (
     <div className="container">
       <div className="jobs-page-head" style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <h2>Clients</h2>
           </div>
-        <div>
+        <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-ghost" onClick={exportClients}><FaFileExcel /> Export Excel</button>
           <button className="btn btn-primary" onClick={openNew}>+ Onboard Client</button>
         </div>
       </div>
