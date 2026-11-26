@@ -26,6 +26,7 @@ import {
 } from 'react-icons/fa'
 import * as XLSX from 'xlsx'
 import { JobService } from '../services/jobService'
+import ClientService from '../services/clientService'
 import { useAuth } from '../../../hooks/useAuth'
 import { supabase } from '../../../supabase/supabaseClient'
 
@@ -69,6 +70,7 @@ export default function Candidates() {
   const [skillFilter, setSkillFilter] = useState('')
   const [locationFilter, setLocationFilter] = useState('')
   const [jobFilter, setJobFilter] = useState('')
+  const [clientFilter, setClientFilter] = useState('')
   const [stageFilter, setStageFilter] = useState('')
   const [experienceFilter, setExperienceFilter] = useState('')
   const [statusFilters, setStatusFilters] = useState<string[]>([])
@@ -90,7 +92,7 @@ export default function Candidates() {
 
   React.useEffect(() => {
     setCurrentPage(1);
-}, [search, statusFilters, selectedRoles, sortFields]);
+}, [search, statusFilters, selectedRoles, sortFields, clientFilter]);
 
   const [currentPage, setCurrentPage] = useState(1);
 const recordsPerPage = 10;
@@ -115,6 +117,20 @@ const recordsPerPage = 10;
     return () => { mounted = false }
   }, [])
 
+  const [clients, setClients] = useState<any[]>([])
+  React.useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const list = await ClientService.list()
+        if (mounted) setClients(list || [])
+      } catch (e) {
+        if (mounted) setClients([])
+      }
+    })()
+    return () => { mounted = false }
+  }, [])
+
   React.useEffect(() => {
     const role = new URLSearchParams(location.search).get('role')
     if (role) setSelectedRoles([role])
@@ -126,6 +142,7 @@ const recordsPerPage = 10;
     const skill = params.get('skill') || ''
     const loc = params.get('location') || ''
     const job = params.get('job') || ''
+    const client = params.get('client') || ''
     const stage = params.get('stage') || ''
     const exp = params.get('exp') || ''
     const status = params.get('status') || ''
@@ -134,6 +151,7 @@ const recordsPerPage = 10;
     setSkillFilter(skill)
     setLocationFilter(loc)
     setJobFilter(job)
+    setClientFilter(client)
     setStageFilter(stage)
     setExperienceFilter(exp)
     if (status) setStatusFilters([status])
@@ -334,6 +352,19 @@ const recordsPerPage = 10;
       const needle = String(jobFilter).toLowerCase()
       tmp = tmp.filter((d: any) => String(d.role || d.applied_job_title || '').toLowerCase() === needle)
     }
+    if (clientFilter) {
+      const needle = String(clientFilter)
+      const selectedClient = clients.find((client: any) => String(client.id) === needle)
+      const clientName = String(selectedClient?.name || '').toLowerCase()
+      tmp = tmp.filter((d: any) => {
+        const key = String(d.applied_job_id || d.job_id || d.job_ref || '')
+        const job = jobsMap[key]
+        return job && (
+          String(job.client_id || '') === needle ||
+          String(job.client_name || '').toLowerCase() === clientName
+        )
+      })
+    }
     if (search) {
       const s = String(search).toLowerCase()
       tmp = tmp.filter((d: any) => {
@@ -415,7 +446,7 @@ const recordsPerPage = 10;
       return 0
     })
     return tmp
-  }, [rows, selectedRoles, search, skillFilter, locationFilter, jobFilter, stageFilter, experienceFilter, statusFilters, sortFields, jobsMap, dateFrom, dateTo])
+  }, [rows, selectedRoles, search, skillFilter, locationFilter, jobFilter, clientFilter, clients, stageFilter, experienceFilter, statusFilters, sortFields, jobsMap, dateFrom, dateTo])
 
   // regenerate grouping from filtered rows so the UI shows filtered buckets
   const grouped = useMemo(() => {
@@ -639,6 +670,21 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
             ))}
           </div>}
         </div>
+        <div className="filter-menu">
+          <select
+            className="filter-summary"
+            value={clientFilter}
+            onChange={(e) => setClientFilter(e.target.value)}
+            aria-label="Filter candidates by client"
+          >
+            <option value="">All clients</option>
+            {clients
+              .filter((client: any) => client?.id)
+              .map((client: any) => (
+                <option key={client.id} value={client.id}>{client.name}</option>
+              ))}
+          </select>
+        </div>
         <div className={`filter-menu ${openFilter === 'date' ? 'open' : ''}`}>
           <button type="button" className="filter-summary" onClick={() => toggleFilterMenu('date')}>
             {dateFrom || dateTo ? (
@@ -662,7 +708,7 @@ const totalPages = Math.ceil(filteredRows.length / recordsPerPage);
           )}
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button className="btn btn-ghost" onClick={() => { setSearch(''); setStatusFilters([]); setSortFields(['date_desc']); setSelectedRoles([]); setDateFrom(''); setDateTo('') }}>Clear</button>
+          <button className="btn btn-ghost" onClick={() => { setSearch(''); setStatusFilters([]); setSortFields(['date_desc']); setSelectedRoles([]); setClientFilter(''); setDateFrom(''); setDateTo('') }}>Clear</button>
         </div>
       </div>
 
